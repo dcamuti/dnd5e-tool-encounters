@@ -123,12 +123,24 @@ table.lst tr.mrow:hover{background:#2c2216}
 .sbroll{cursor:pointer; background:#f6efdd; border:1px solid #c9b88f; border-radius:6px; padding:0 6px; font-size:.72rem; margin-left:5px; color:#7a2020; white-space:nowrap; user-select:none}
 .sbroll:hover{border-color:#8b2e2e; background:#efe5cc}
 #dbar{position:fixed; left:0; right:0; bottom:0; z-index:70; background:linear-gradient(180deg,#2c2013,#191209); border-top:2px solid var(--gold); padding:7px 14px; display:none; align-items:center; gap:7px; flex-wrap:wrap}
+.suite-nav{max-width:1180px; margin:14px auto -8px; padding:0 20px; display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+.suite-nav .sn-lbl{font-family:var(--font-display); font-size:.68rem; letter-spacing:2px; color:var(--muted)}
+.suite-nav a{background:linear-gradient(180deg,#2c2216,#241b10); border:1px solid var(--border); border-radius:20px; padding:5px 14px; font-size:.8rem; color:var(--ink); text-decoration:none; font-family:var(--font-display); transition:all .15s}
+.suite-nav a:hover{border-color:var(--gold); color:var(--gold-l)}
+.suite-nav a.on{background:linear-gradient(180deg,#a13636,#7a2626); border-color:#c95454; color:#fff; pointer-events:none}
 .toolbar{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px}
+#printArea{display:none}
 @media print{
   body{background:#fff}
-  .app-header,.tabbar,.toolbar,.panel{display:none !important}
+  .app-header,.tabbar,.toolbar,.panel,#dbar,.suite-nav{display:none !important}
   .mm{box-shadow:none; break-inside:avoid}
+  body.printsb main,body.printsb .modal{display:none !important}
+  body.printsb #printArea{display:block}
+  body.printsb #printArea .mm{margin-bottom:14px}
 }
+.fx-chip{display:inline-block;background:linear-gradient(180deg,#2c2216,#241b10);border:1px solid var(--gold);border-radius:16px;padding:4px 12px;font-size:.8rem;margin:0 6px 6px 0;color:var(--gold-l)}
+.fx-chip .fx-x{cursor:pointer;color:var(--muted);margin-left:6px}
+.fx-chip .fx-x:hover{color:#e07a7a}
 @media(max-width:760px){.trk-row{grid-template-columns:44px 1fr 60px; grid-auto-rows:auto}.thresholds{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
@@ -142,6 +154,13 @@ table.lst tr.mrow:hover{background:#2c2216}
     <button class="btn gold" onclick="showTab('gen');if($('gMode').value!=='m')genEnc()">🎲 Genera incontro</button>
   </div>
 </header>
+<nav class="suite-nav">
+  <span class="sn-lbl">SUITE D&amp;D 5E</span>
+  <a href="https://dcamuti.github.io/dnd5e-tool-characters/">⚔️ Schede PG</a>
+  <a href="https://dcamuti.github.io/dnd5e-tool-npcs/">🎭 NPC</a>
+  <a class="on" href="https://dcamuti.github.io/dnd5e-tool-encounters/">🐉 Incontri</a>
+  <a href="https://dcamuti.github.io/dnd5e-tool-journal/">📖 Diario</a>
+</nav>
 <main>
   <div class="tabbar">
     <div class="tab active" id="tab-gen" onclick="showTab('gen')">⚔ Incontro</div>
@@ -203,6 +222,7 @@ table.lst tr.mrow:hover{background:#2c2216}
         <button class="btn" onclick="saveEnc()">💾 Salva incontro</button>
         <button class="btn" onclick="exportEnc()">⬇ Esporta JSON</button>
         <button class="btn" onclick="openTreasure()">💰 Tesoro</button>
+        <button class="btn" onclick="printEnc()">🖨 Stampa statblock</button>
         <button class="btn" onclick="ENC=[];renderEnc()">🗑 Svuota</button>
       </div>
     </div>
@@ -234,13 +254,26 @@ table.lst tr.mrow:hover{background:#2c2216}
         <button class="btn" onclick="sortInit()">⇅ Ordina</button>
         <button class="btn" onclick="addPc()">➕ Aggiungi PG</button>
         <button class="btn gold" onclick="$('pcFile').click()">⬆ Importa party</button>
+        <button class="btn" onclick="addFx()">✨ Effetto</button>
+        <button class="btn" id="areaBtn" onclick="toggleArea()">💥 Danni ad area</button>
+        <button class="btn" onclick="undoTrk()">↩ Annulla</button>
+        <button class="btn" id="lairBtn" onclick="toggleLair()">🏰 Tana</button>
         <button class="btn" onclick="clearTrk()">🗑 Svuota</button>
+      </div>
+      <div id="fxRows" style="margin-bottom:8px"></div>
+      <div id="areaPanel" style="display:none;background:linear-gradient(160deg,#3a2a1b,#2e2213);border:1px solid #c97a27;border-radius:9px;padding:10px 12px;margin-bottom:10px">
+        <span style="font-family:var(--font-display);color:#e0a76a;font-size:.8rem">💥 DANNI AD AREA</span>
+        <label class="fld" style="margin:0 10px"><span>Danno</span><input type="number" id="areaDmg" value="14" style="width:70px"></label>
+        <span class="hint" style="display:inline;color:var(--muted);font-size:.78rem">Spunta i coinvolti nelle righe qui sotto; attiva «½» per chi supera il TS.</span>
+        <button class="btn small gold" onclick="areaApply()">Applica</button>
+        <button class="btn small" onclick="toggleArea()">Annulla</button>
       </div>
       <div id="trkRows"></div>
     </div>
   </div>
 </main>
 
+<div id="printArea"></div>
 <!-- barra dadi (tracker e statblock) -->
 <div id="dbar">
   <span style="font-family:var(--font-display);color:var(--gold-l);font-size:.78rem">DADI</span>
@@ -857,7 +890,33 @@ function sbHTML(m){
   if(m.leg&&m.leg.length){h+=`<h5>Azioni Leggendarie</h5><div class="tr" style="font-size:.8rem;color:#4a3f2e">Può compiere 3 azioni leggendarie, una alla volta, alla fine del turno di un'altra creatura. Le recupera all'inizio del proprio turno.</div>`;m.leg.forEach(t=>h+=`<div class="tr"><b><i>${t[0]}.</i></b> ${t[1]} ${sbBtns(t[0],t[1])}</div>`)}
   h+=`</div>`;return h;
 }
-function openSb(i){$("sbBody").innerHTML=sbHTML(MONSTERS[i]);$("sbModal").style.display="flex";dbarVis()}
+/* varianti élite / indebolita */
+let SBI=-1,SBV=0;
+function variantOf(m,v){
+  if(!v)return m;
+  const c=JSON.parse(JSON.stringify(m));
+  c.hp=c.hp.replace(/^\d+/,x=>""+Math.max(1,Math.round(parseInt(x,10)*(v>0?1.5:0.5))));
+  const adj=t=>t.replace(/([+-]\d+) al colpire/g,(s,b)=>{const nb=parseInt(b,10)+2*v;return(nb>=0?"+":"")+nb+" al colpire"})
+               .replace(/CD (\d+)/g,(s,d)=>"CD "+(parseInt(d,10)+2*v));
+  ["tr","act","rea","leg"].forEach(k=>{if(c[k])c[k]=c[k].map(t=>[t[0],adj(t[1])])});
+  c.it+=v>0?" (élite)":" (indebolita)";
+  c.tr=(c.tr||[]).concat([[v>0?"Variante Élite":"Variante Indebolita",v>0?"PF ×1,5; +2 ai tiri per colpire e alle CD rispetto all'originale.":"PF dimezzati; -2 ai tiri per colpire e alle CD rispetto all'originale."]]);
+  return c;
+}
+function renderSbModal(){
+  const bar=`<div style="margin-bottom:8px;text-align:right">
+    <span class="chip tiny ${SBV===0?"sel":""}" onclick="SBV=0;renderSbModal()">Normale</span>
+    <span class="chip tiny ${SBV===1?"sel":""}" onclick="SBV=1;renderSbModal()">⬆ Élite</span>
+    <span class="chip tiny ${SBV===-1?"sel":""}" onclick="SBV=-1;renderSbModal()">⬇ Indebolita</span>
+    <button class="btn small gold" onclick="addToEncV()">➕ All'incontro</button></div>`;
+  $("sbBody").innerHTML=bar+sbHTML(variantOf(MONSTERS[SBI],SBV));
+}
+function addToEncV(){
+  const row=ENC.find(r=>r.i===SBI&&(r.v||0)===SBV);
+  if(row)row.q++;else ENC.push({i:SBI,q:1,v:SBV||undefined});
+  renderEnc();dlog(`➕ ${MONSTERS[SBI].it}${SBV?(SBV>0?" (élite)":" (indebolita)"):""} aggiunto all'incontro`);
+}
+function openSb(i){SBI=i;SBV=0;renderSbModal();$("sbModal").style.display="flex";dbarVis()}
 function closeSb(){$("sbModal").style.display="none";dbarVis()}
 
 /* ================= BESTIARIO: lista ================= */
@@ -962,9 +1021,10 @@ function rerollRow(k){
   if(!cand.length)return;
   row.i=R(cand).idx;renderEnc();
 }
+const vXp=r=>Math.round(XP[MONSTERS[r.i].cr]*(r.v>0?1.5:r.v<0?0.5:1));
 function encTotals(){
   const nTot=ENC.reduce((s,r)=>s+r.q,0);
-  const raw=ENC.reduce((s,r)=>s+XP[MONSTERS[r.i].cr]*r.q,0);
+  const raw=ENC.reduce((s,r)=>s+vXp(r)*r.q,0);
   return{nTot,raw,adj:Math.round(raw*encMult(nTot))};
 }
 function renderEnc(){
@@ -973,8 +1033,8 @@ function renderEnc(){
   $("encPanel").style.display="";
   $("encRows").innerHTML=ENC.map((r,k)=>{const m=MONSTERS[r.i];
    return`<div class="enc-row"><span class="cnt">${r.q}×</span>
-    <span class="en" onclick="openSb(${r.i})">${m.it}</span>
-    <span class="em">${m.n} · GS ${m.cr} · ${XP[m.cr].toLocaleString("it-IT")} XP cad. · ${m.tp.split(" (")[0]}</span>
+    <span class="en" onclick="openSb(${r.i})">${m.it}${r.v?(r.v>0?" ⬆(élite)":" ⬇(indebolita)"):""}</span>
+    <span class="em">${m.n} · GS ${m.cr} · ${vXp(r).toLocaleString("it-IT")} XP cad. · ${m.tp.split(" (")[0]}</span>
     <span style="margin-left:auto">
      <button class="btn small" onclick="openSb(${r.i})">🔍 Statblock</button>
      <button class="btn small" onclick="rerollRow(${k})" title="Sostituisci con un mostro di pari GS">♻</button>
@@ -993,7 +1053,7 @@ function saveEnc(){
   if(!ENC.length)return;
   const name=prompt("Nome dell'incontro:","Incontro "+new Date().toLocaleDateString("it-IT"));
   if(!name)return;
-  const r=encSaved();r.push({id:"e"+Date.now(),name,enc:ENC.map(x=>({n:MONSTERS[x.i].n,q:x.q}))});
+  const r=encSaved();r.push({id:"e"+Date.now(),name,enc:ENC.map(x=>({n:MONSTERS[x.i].n,q:x.q,v:x.v}))});
   lsSet("enc_saved",r);alert("💾 Salvato.");
 }
 function openEncSaved(){
@@ -1008,7 +1068,7 @@ function openEncSaved(){
 function closeEncSaved(){$("encModal").style.display="none"}
 function loadEnc(id){
   const e=encSaved().find(x=>x.id===id);if(!e)return;
-  ENC=e.enc.map(x=>({i:MONSTERS.findIndex(m=>m.n===x.n),q:x.q})).filter(x=>x.i>=0);
+  ENC=e.enc.map(x=>({i:MONSTERS.findIndex(m=>m.n===x.n),q:x.q,v:x.v})).filter(x=>x.i>=0);
   closeEncSaved();showTab("gen");renderEnc();
 }
 function delEnc(id){if(!confirm("Eliminare?"))return;lsSet("enc_saved",encSaved().filter(x=>x.id!==id));openEncSaved()}
@@ -1085,7 +1145,7 @@ function openTreasure(){
   $("sbBody").innerHTML=h;$("sbModal").style.display="flex";dbarVis();
 }
 /* ================= BACKUP SUITE ================= */
-const SUITE_KEYS=["dnd5e_chars","dnd5e_draft","dnd5e_lang","dnd5e_npcs","enc_src","enc_saved","enc_trk","enc_hb"];
+const SUITE_KEYS=["dnd5e_chars","dnd5e_draft","dnd5e_lang","dnd5e_npcs","enc_src","enc_saved","enc_trk","enc_hb","dnd5e_diary"];
 function backupSuite(){
   const data={type:"dnd5e_suite_backup",date:new Date().toISOString(),store:{}};
   let n=0;SUITE_KEYS.forEach(k=>{try{const v=localStorage.getItem(k);if(v!=null){data.store[k]=v;n++}}catch(e){}});
@@ -1107,8 +1167,56 @@ function restoreSuite(file){
 }
 /* ================= TRACKER ================= */
 let TRK=lsGet("enc_trk",{list:[],turn:-1,round:0});
+if(!TRK.fx)TRK.fx=[];
 const CONDS=["Prono","Afferrato","Trattenuto","Accecato","Assordato","Avvelenato","Spaventato","Affascinato","Stordito","Paralizzato","Incapacitato","Invisibile","Pietrificato","Conc."];
 function trkSave(){lsSet("enc_trk",TRK)}
+/* undo */
+let UNDO=[];
+function snap(){UNDO.push(JSON.stringify(TRK));if(UNDO.length>15)UNDO.shift()}
+function undoTrk(){if(!UNDO.length){dlog("↩ Nulla da annullare");return}TRK=JSON.parse(UNDO.pop());trkSave();renderTrk();dlog("↩ Annullata l'ultima modifica")}
+/* effetti con durata */
+function addFx(){
+  const name=prompt("Nome dell'effetto (es. Benedizione, Ragnatela):");if(!name)return;
+  const rds=parseInt(prompt("Durata in round (1 minuto = 10):","10"),10)||10;
+  const tgt=prompt("Su chi? (facoltativo, testo libero)","")||"";
+  TRK.fx.push({id:"f"+Date.now(),name,rds,tgt});trkSave();renderTrk();
+}
+function rmFx(id){TRK.fx=TRK.fx.filter(f=>f.id!==id);trkSave();renderTrk()}
+function tickFx(){
+  TRK.fx.forEach(f=>f.rds--);
+  TRK.fx.filter(f=>f.rds<=0).forEach(f=>dlog(`⏳ Effetto terminato: <b>${f.name}</b>${f.tgt?" ("+f.tgt+")":""}`));
+  TRK.fx=TRK.fx.filter(f=>f.rds>0);
+}
+/* tana */
+let LAIR=false;
+function toggleLair(){LAIR=!LAIR;$("lairBtn").classList.toggle("on",LAIR);dlog(LAIR?"🏰 Promemoria azioni di tana attivo (iniziativa 20)":"🏰 Promemoria tana disattivato")}
+/* danni ad area */
+let AREA={on:false,sel:{},half:{}};
+function toggleArea(){AREA={on:!AREA.on,sel:{},half:{}};$("areaPanel").style.display=AREA.on?"":"none";$("areaBtn").classList.toggle("on",AREA.on);renderTrk()}
+function areaSel(id){AREA.sel[id]=!AREA.sel[id];renderTrk()}
+function areaHalf(id){AREA.half[id]=!AREA.half[id];renderTrk()}
+function areaApply(){
+  const dm=Math.max(0,parseInt($("areaDmg").value,10)||0);if(!dm)return;
+  const hit=TRK.list.filter(u=>AREA.sel[u.id]&&u.hp!==null);
+  if(!hit.length){alert("Seleziona almeno una creatura nelle righe.");return}
+  snap();
+  const parts=[];
+  hit.forEach(u=>{const d=AREA.half[u.id]?Math.floor(dm/2):dm;
+    u.hp=Math.max(0,u.hp-d);parts.push(`${u.name} -${d}`);
+    if(u.cond&&u.cond.includes("Conc."))dlog(`⚠ ${u.name}: TS Concentrazione CD ${Math.max(10,Math.floor(d/2))}`);});
+  dlog(`💥 Area (${dm}): ${parts.join(", ")}`);
+  AREA={on:false,sel:{},half:{}};$("areaPanel").style.display="none";$("areaBtn").classList.remove("on");
+  trkSave();renderTrk();
+}
+/* stampa statblock dell'incontro */
+function printEnc(){
+  if(!ENC.length)return;
+  $("printArea").innerHTML=ENC.map(r=>{const m=variantOf(MONSTERS[r.i],r.v||0);
+    return`<div style="font-family:Georgia;font-size:.85rem;margin:4px 0;color:#333"><b>${r.q}×</b></div>`+sbHTML(m)}).join("");
+  document.body.classList.add("printsb");
+  window.print();
+  setTimeout(()=>document.body.classList.remove("printsb"),800);
+}
 function hpFromDice(m){
   const g=m.hp.match(/\((\d+)d(\d+)([+-]\d+)?\)/);
   if(!g)return parseInt(m.hp,10)||10;
@@ -1117,11 +1225,11 @@ function hpFromDice(m){
 }
 function encToTracker(){
   if(!ENC.length)return;
-  ENC.forEach(r=>{const m=MONSTERS[r.i];
+  ENC.forEach(r=>{const m=variantOf(MONSTERS[r.i],r.v||0);
     for(let k=1;k<=r.q;k++){
       const hpm=hpFromDice(m);
       TRK.list.push({id:"t"+Date.now()+Math.random().toString(36).slice(2,6),
-       name:m.it+(r.q>1?" "+k:""),sub:m.n+" · GS "+m.cr,mi:r.i,pc:false,
+       name:m.it+(r.q>1?" "+k:""),sub:MONSTERS[r.i].n+" · GS "+m.cr,mi:r.i,pc:false,
        init:null,ac:parseInt(m.ac,10)||10,hpMax:hpm,hp:hpm,
        dex:Math.floor((m.ab[1]-10)/2),cond:[]});
     }});
@@ -1179,6 +1287,7 @@ function nextTurn(){
   if(!TRK.list.length)return;
   const alive=TRK.list.map((u,i)=>({u,i})).filter(x=>x.u.pc||x.u.hp>0);
   if(!alive.length)return;
+  const prevRound=TRK.round;
   if(TRK.turn<0){TRK.turn=alive[0].i;TRK.round=1}
   else{
     const pos=alive.findIndex(x=>x.i===TRK.turn);
@@ -1186,29 +1295,44 @@ function nextTurn(){
     if(pos===alive.length-1||pos<0)TRK.round++;
     TRK.turn=nx.i;
   }
+  if(TRK.round>prevRound){
+    tickFx();
+    if(LAIR)dlog(`🏰 Round ${TRK.round}: ricorda l'azione di tana (iniziativa 20)`);
+  }
+  /* reset azioni leggendarie all'inizio del turno del mostro */
+  const act=TRK.list[TRK.turn];
+  if(act&&!act.pc&&act.mi>=0&&MONSTERS[act.mi]&&MONSTERS[act.mi].leg)act.la=0;
   trkSave();renderTrk();
 }
+function laSet(id,k){const u=TRK.list.find(x=>x.id===id);if(!u)return;
+  u.la=(u.la||0)===k+1?k:k+1;trkSave();renderTrk()}
 function dmg(id,v){
   const u=TRK.list.find(x=>x.id===id);if(!u||u.hp===null)return;
-  u.hp=Math.max(0,Math.min(u.hpMax,u.hp+v));trkSave();renderTrk();
+  snap();
+  u.hp=Math.max(0,Math.min(u.hpMax,u.hp+v));
+  if(v<0&&u.cond&&u.cond.includes("Conc."))dlog(`⚠ ${u.name}: TS Concentrazione CD ${Math.max(10,Math.floor(Math.abs(v)/2))}`);
+  trkSave();renderTrk();
 }
-function setHp(id,v){const u=TRK.list.find(x=>x.id===id);if(u){u.hp=Math.max(0,parseInt(v,10)||0);trkSave();renderTrk()}}
+function setHp(id,v){const u=TRK.list.find(x=>x.id===id);if(u){snap();u.hp=Math.max(0,parseInt(v,10)||0);trkSave();renderTrk()}}
 function setInit(id,v){const u=TRK.list.find(x=>x.id===id);if(u){u.init=parseInt(v,10)||0;trkSave()}}
 function toggleCond(id,c){
   const u=TRK.list.find(x=>x.id===id);if(!u)return;
   const i=u.cond.indexOf(c);if(i>=0)u.cond.splice(i,1);else u.cond.push(c);
   trkSave();renderTrk();
 }
-function rmU(id){TRK.list=TRK.list.filter(x=>x.id!==id);trkSave();renderTrk()}
-function clearTrk(){if(!confirm("Svuotare il tracker?"))return;TRK={list:[],turn:-1,round:0};trkSave();renderTrk()}
+function rmU(id){snap();TRK.list=TRK.list.filter(x=>x.id!==id);trkSave();renderTrk()}
+function clearTrk(){if(!confirm("Svuotare il tracker?"))return;snap();TRK={list:[],turn:-1,round:0,fx:[]};trkSave();renderTrk()}
 function renderTrk(){
   ks();
   $("roundLbl").textContent=TRK.round>0?`— Round ${TRK.round}`:"";
+  $("fxRows").innerHTML=(TRK.fx||[]).map(f=>`<span class="fx-chip">✨ ${f.name} — <b>${f.rds}</b> round${f.tgt?" · "+f.tgt:""}<span class="fx-x" onclick="rmFx('${f.id}')">✕</span></span>`).join("");
   $("trkRows").innerHTML=TRK.list.length?TRK.list.map((u,i)=>{
     const dead=!u.pc&&u.hp<=0;
+    const areaBox=AREA.on&&u.hp!==null?`<span style="white-space:nowrap" onclick="event.stopPropagation()"><input type="checkbox" ${AREA.sel[u.id]?"checked":""} onchange="areaSel('${u.id}')" title="Coinvolto nell'area"> <span class="chip tiny ${AREA.half[u.id]?"sel":""}" onclick="areaHalf('${u.id}')" title="TS superato: metà danni">½</span></span> `:"";
+    const laPips=(!u.pc&&u.mi>=0&&MONSTERS[u.mi]&&MONSTERS[u.mi].leg)?`<span style="white-space:nowrap;font-size:.68rem;color:var(--gold)" title="Azioni leggendarie usate nel round" onclick="event.stopPropagation()">AL ${[0,1,2].map(k=>`<span style="display:inline-block;width:11px;height:11px;border:1px solid var(--gold);border-radius:50%;cursor:pointer;background:${(u.la||0)>k?"var(--gold)":"transparent"}" onclick="laSet('${u.id}',${k})"></span>`).join("")}</span>`:"";
     return`<div class="trk-row ${i===TRK.turn?"active":""} ${dead?"dead":""}">
      <input class="ti" value="${u.init??""}" placeholder="—" onchange="setInit('${u.id}',this.value)">
-     <span class="tn" ${u.mi>=0?`onclick="openSb(${u.mi})"`:""}>${dead?"☠ ":""}${u.name}<small>${u.sub}</small></span>
+     <span class="tn" ${u.mi>=0?`onclick="openSb(${u.mi})"`:""}>${areaBox}${dead?"☠ ":""}${u.name} ${laPips}<small>${u.sub}</small></span>
      <span class="tac">${u.ac?("CA "+u.ac):""}</span>
      <span class="hpbar">${u.hp!==null?`<span class="hpbtn" onclick="dmg('${u.id}',-5)">-5</span><span class="hpbtn" onclick="dmg('${u.id}',-1)">-1</span>
        <input value="${u.hp}" onchange="setHp('${u.id}',this.value)"><span class="hx">/${u.hpMax}</span>
