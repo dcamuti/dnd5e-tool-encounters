@@ -45,7 +45,11 @@ h2,h3{font-family:var(--font-display)}
 .panel h2::after{content:""; display:block; width:64px; height:2px; margin-top:7px; background:linear-gradient(90deg,var(--gold),transparent)}
 .panel .hint{color:var(--muted); font-size:.86rem; margin:8px 0 14px}
 select,input[type=text],input[type=number]{background:#1a130b; color:var(--ink); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-family:inherit; font-size:.95rem}
-select:focus,input:focus{outline:none; border-color:var(--gold); box-shadow:0 0 0 2px rgba(201,162,39,.15)}
+select:focus,input:focus,textarea:focus{outline:none; border-color:var(--gold); box-shadow:0 0 0 2px rgba(201,162,39,.15)}
+textarea{background:#1a130b; color:var(--ink); border:1px solid var(--border); border-radius:8px; padding:8px; font-family:inherit; width:100%; min-height:52px; font-size:.85rem}
+.hb-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; margin-bottom:8px}
+.hb-grid label.fld{margin:0}
+.hb-grid input,.hb-grid select{width:100%}
 label.fld{display:inline-block; margin:0 14px 12px 0; vertical-align:top}
 label.fld span{display:block; font-size:.72rem; color:var(--muted); margin-bottom:5px; text-transform:uppercase; letter-spacing:1.5px; font-family:var(--font-display)}
 .chip{display:inline-block;background:linear-gradient(180deg,#2c2216,#241b10); border:1px solid var(--border); border-radius:20px; padding:5px 14px; font-size:.82rem; cursor:pointer; transition:all .15s; user-select:none; margin:0 6px 6px 0}
@@ -130,8 +134,9 @@ table.lst tr.mrow:hover{background:#2c2216}
   <h1>⚔️ Generatore Incontri D&amp;D 5E <small>Bestiario · Bilanciamento · Tracker di combattimento</small></h1>
   <div>
     <button class="btn" onclick="openSrc()">📚 Fonti <span id="srcBadge"></span></button>
+    <button class="btn" onclick="openHb()">🛠 Homebrew</button>
     <button class="btn" onclick="openEncSaved()">📂 Incontri salvati</button>
-    <button class="btn gold" onclick="showTab('gen');genEnc()">🎲 Genera incontro</button>
+    <button class="btn gold" onclick="showTab('gen');if($('gMode').value!=='m')genEnc()">🎲 Genera incontro</button>
   </div>
 </header>
 <main>
@@ -156,7 +161,8 @@ table.lst tr.mrow:hover{background:#2c2216}
       <div class="hint">Scegli tu numero e grado sfida, oppure lascia che sia il budget XP a comporre l'incontro.</div>
       <label class="fld"><span>Modalità</span><select id="gMode" onchange="modeUI()">
         <option value="n">Numero nemici + GS</option>
-        <option value="b">Budget per difficoltà</option></select></label>
+        <option value="b">Budget per difficoltà</option>
+        <option value="m">Crea manualmente</option></select></label>
       <span id="modeN">
         <label class="fld"><span>N° nemici</span><select id="gCount"></select></label>
         <label class="fld"><span>GS min</span><select id="gCrMin"></select></label>
@@ -173,7 +179,13 @@ table.lst tr.mrow:hover{background:#2c2216}
       </span>
       <label class="fld"><span>Ambiente</span><select id="gEnv"><option value="">Qualsiasi</option></select></label>
       <div style="margin:4px 0 10px"><span style="font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;font-family:var(--font-display)">Tipi di creatura (nessuno = tutti)</span><div id="gTypes" style="margin-top:6px"></div></div>
-      <button class="btn gold" onclick="genEnc()">🎲 Genera incontro</button>
+      <span id="modeM" style="display:none">
+        <label class="fld"><span>Cerca creatura</span><input type="text" id="mQ" placeholder="nome…" oninput="renderMList()"></label>
+        <label class="fld"><span>GS</span><select id="mCr" onchange="renderMList()"><option value="">Tutti</option></select></label>
+        <div class="hint">Clicca ➕ per aggiungere la creatura all'incontro (anche più volte). Difficoltà e XP si aggiornano in tempo reale qui sotto.</div>
+        <div id="mList" style="max-height:340px;overflow-y:auto"></div>
+      </span>
+      <button class="btn gold" id="genBtn" onclick="genEnc()">🎲 Genera incontro</button>
     </div>
     <div class="panel" id="encPanel" style="display:none">
       <h2>☠ Incontro generato</h2>
@@ -184,9 +196,10 @@ table.lst tr.mrow:hover{background:#2c2216}
       </div>
       <div class="toolbar">
         <button class="btn gold" onclick="encToTracker()">🗡 Invia al tracker</button>
-        <button class="btn" onclick="genEnc()">🎲 Rigenera</button>
+        <button class="btn" id="reGenBtn" onclick="genEnc()">🎲 Rigenera</button>
         <button class="btn" onclick="saveEnc()">💾 Salva incontro</button>
         <button class="btn" onclick="exportEnc()">⬇ Esporta JSON</button>
+        <button class="btn" onclick="ENC=[];renderEnc()">🗑 Svuota</button>
       </div>
     </div>
   </div>
@@ -235,6 +248,63 @@ table.lst tr.mrow:hover{background:#2c2216}
    <div id="srcGrid"></div>
    <div class="toolbar"><button class="btn" onclick="srcAll(true)">Tutte</button><button class="btn" onclick="srcAll(false)">Solo MM</button><button class="btn gold" onclick="closeSrc()">Conferma</button></div></div>
 </div>
+<!-- modale homebrew -->
+<div class="modal" id="hbModal" onclick="if(event.target===this)closeHb()">
+  <div class="modal-box">
+    <h2>🛠 Bestiario Homebrew</h2>
+    <div class="hint" style="color:var(--muted);font-size:.85rem;margin-bottom:10px">I mostri personalizzati (fonte <b>HB</b>) entrano nel bestiario, nel generatore e nel tracker come tutti gli altri. Salvati nel browser: usa Esporta/Importa per backup.</div>
+    <div id="hbList"></div>
+    <div class="toolbar" id="hbListBar">
+      <button class="btn gold" onclick="hbNew()">➕ Nuovo mostro</button>
+      <button class="btn" onclick="hbExport()">⬇ Esporta JSON</button>
+      <button class="btn" onclick="$('hbFile').click()">⬆ Importa JSON</button>
+      <button class="btn" onclick="closeHb()">Chiudi</button>
+    </div>
+    <div id="hbForm" style="display:none">
+      <div class="hb-grid">
+        <label class="fld"><span>Nome (EN, univoco)</span><input id="hb_n"></label>
+        <label class="fld"><span>Nome mostrato (IT)</span><input id="hb_it"></label>
+        <label class="fld"><span>Grado Sfida</span><select id="hb_cr"></select></label>
+        <label class="fld"><span>Taglia</span><select id="hb_sz"><option>Minuscola</option><option>Piccola</option><option selected>Media</option><option>Grande</option><option>Enorme</option><option>Mastodontica</option></select></label>
+        <label class="fld"><span>Tipo</span><input id="hb_tp" placeholder="es. non morto"></label>
+        <label class="fld"><span>Allineamento</span><input id="hb_al" placeholder="es. caotico malvagio"></label>
+        <label class="fld"><span>Classe Armatura</span><input id="hb_ac" placeholder="es. 15 (cuoio borchiato)"></label>
+        <label class="fld"><span>Punti Ferita</span><input id="hb_hp" placeholder="es. 45 (7d8+14)"></label>
+        <label class="fld"><span>Velocità</span><input id="hb_spd" placeholder="es. 9 m, volo 18 m"></label>
+      </div>
+      <div class="hb-grid" style="grid-template-columns:repeat(6,minmax(60px,1fr))">
+        <label class="fld"><span>FOR</span><input id="hb_ab0" type="number" value="10"></label>
+        <label class="fld"><span>DES</span><input id="hb_ab1" type="number" value="10"></label>
+        <label class="fld"><span>COS</span><input id="hb_ab2" type="number" value="10"></label>
+        <label class="fld"><span>INT</span><input id="hb_ab3" type="number" value="10"></label>
+        <label class="fld"><span>SAG</span><input id="hb_ab4" type="number" value="10"></label>
+        <label class="fld"><span>CAR</span><input id="hb_ab5" type="number" value="10"></label>
+      </div>
+      <div class="hb-grid">
+        <label class="fld"><span>Tiri Salvezza (opz.)</span><input id="hb_sv" placeholder="es. Des +5, Sag +3"></label>
+        <label class="fld"><span>Abilità (opz.)</span><input id="hb_sk" placeholder="es. Furtività +6"></label>
+        <label class="fld"><span>Vulnerabilità (opz.)</span><input id="hb_vul"></label>
+        <label class="fld"><span>Resistenze (opz.)</span><input id="hb_res"></label>
+        <label class="fld"><span>Immunità danni (opz.)</span><input id="hb_imm"></label>
+        <label class="fld"><span>Immunità condizioni (opz.)</span><input id="hb_cim"></label>
+        <label class="fld"><span>Sensi</span><input id="hb_sen" placeholder="es. scurovisione 18 m, Percezione passiva 12"></label>
+        <label class="fld"><span>Linguaggi</span><input id="hb_lg" placeholder="es. Comune"></label>
+        <label class="fld"><span>Ambienti (separati da virgola)</span><input id="hb_env" placeholder="es. foresta, palude"></label>
+      </div>
+      <label class="fld" style="display:block"><span>Tratti — uno per riga, formato: Nome | Descrizione</span><textarea id="hb_tr" placeholder="Resistenza alla Magia | Vantaggio ai TS contro incantesimi."></textarea></label>
+      <label class="fld" style="display:block"><span>Azioni — una per riga: Nome | Descrizione</span><textarea id="hb_act" placeholder="Morso | Attacco con arma da mischia: +5 al colpire, portata 1,5 m. Colpito: 10 (2d6+3) danni perforanti."></textarea></label>
+      <label class="fld" style="display:block"><span>Reazioni (opz.) — una per riga: Nome | Descrizione</span><textarea id="hb_rea"></textarea></label>
+      <label class="fld" style="display:block"><span>Azioni Leggendarie (opz.) — una per riga: Nome | Descrizione</span><textarea id="hb_leg"></textarea></label>
+      <div class="err" id="hbErr" style="color:#e07a7a;font-size:.85rem;min-height:1.2em"></div>
+      <div class="toolbar">
+        <button class="btn gold" onclick="hbSave()">💾 Salva mostro</button>
+        <button class="btn" onclick="hbPreview()">🔍 Anteprima</button>
+        <button class="btn" onclick="hbCancel()">Annulla</button>
+      </div>
+    </div>
+  </div>
+</div>
+<input type="file" id="hbFile" accept=".json" style="display:none">
 <!-- modale incontri salvati -->
 <div class="modal" id="encModal" onclick="if(event.target===this)closeEncSaved()">
   <div class="modal-box"><h2>📂 Incontri salvati</h2><div id="encSavedList"></div>
@@ -250,7 +320,7 @@ function lsGet(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 
 /* ================= FONTI ================= */
-const SOURCES=[["MM","Monster Manual",1],["VGtM","Volo's Guide to Monsters"],["MToF","Mordenkainen's Tome of Foes"],["MPMM","Monsters of the Multiverse"]];
+const SOURCES=[["MM","Monster Manual",1],["VGtM","Volo's Guide to Monsters"],["MToF","Mordenkainen's Tome of Foes"],["MPMM","Monsters of the Multiverse"],["HB","Homebrew (contenuti personalizzati)"]];
 let ENABLED=new Set(lsGet("enc_src",SOURCES.map(s=>s[0])));
 const okSrc=s=>s.split("/").some(x=>ENABLED.has(x));
 function openSrc(){renderSrc();$("srcModal").style.display="flex"}
@@ -375,7 +445,7 @@ const MONSTERS=[
 {n:"Rust Monster",it:"Mostro della Ruggine",src:"MM",cr:"1/2",sz:"Media",tp:"mostruosità",al:"non allineato",ac:"14 (armatura naturale)",hp:"27 (5d8+5)",spd:"12 m",ab:[13,12,13,2,13,6],sen:"scurovisione 18 m, Percezione passiva 11",lg:"—",env:["sottosuolo"],tr:[["Fiuto del Ferro","Percepisce il metallo ferroso entro 9 m."],["Corrodere il Metallo","Ogni arma metallica non magica che lo colpisce si corrode (penalità -1 cumulativa; a -5 è distrutta); anche munizioni metalliche sono distrutte dopo il colpo."]],act:[["Antenne","Corrode un oggetto metallico non magico visibile entro 1,5 m: 30 cm cubi di metallo distrutti; se indossato/impugnato, TS su Destrezza CD 11 per evitarlo (un'armatura indossata subisce una penalità cumulativa di -1 alla CA prima di essere distrutta)."],["Morso","Attacco con arma da mischia: +3 al colpire, portata 1,5 m. Colpito: 5 (1d8+1) danni perforanti."]]},
 {n:"Sahuagin",it:"Sahuagin",src:"MM",cr:"1/2",sz:"Media",tp:"umanoide (sahuagin)",al:"legale malvagio",ac:"12 (armatura naturale)",hp:"22 (4d8+4)",spd:"9 m, nuoto 12 m",ab:[13,11,12,12,13,9],sk:"Percezione +5",sen:"scurovisione 36 m, Percezione passiva 15",lg:"Sahuagin",env:["acqua","costa"],tr:[["Frenesia di Sangue","Vantaggio agli attacchi in mischia contro creature che non hanno tutti i pf."],["Respiro Limitato","Può respirare aria per 4 ore."],["Parlare con gli Squali","Comanda telepaticamente gli squali entro 36 m."]],act:[["Multiattacco","Due attacchi in mischia: uno col morso e uno con artigli o lancia."],["Morso","Attacco con arma da mischia: +3 al colpire, portata 1,5 m. Colpito: 3 (1d4+1) danni perforanti."],["Artigli","Attacco con arma da mischia: +3 al colpire, portata 1,5 m. Colpito: 3 (1d4+1) danni taglienti."],["Lancia","Attacco con arma da mischia o a distanza: +3 al colpire, portata 1,5 m o gittata 6/18 m. Colpito: 4 (1d6+1) danni perforanti, o 5 (1d8+1) a due mani in mischia."]]},
 {n:"Scout",it:"Esploratore",src:"MM",cr:"1/2",sz:"Media",tp:"umanoide",al:"qualsiasi allineamento",ac:"13 (armatura di cuoio)",hp:"16 (3d8+3)",spd:"9 m",ab:[11,14,12,11,13,11],sk:"Natura +4, Percezione +5, Furtività +6, Sopravvivenza +5",sen:"Percezione passiva 15",lg:"una lingua qualsiasi",env:["foresta","collina","pianura","urbano"],tr:[["Udito e Vista Acuti","Vantaggio alle prove di Percezione basate su udito o vista."]],act:[["Multiattacco","Due attacchi in mischia o due a distanza."],["Spada corta","Attacco con arma da mischia: +4 al colpire, portata 1,5 m. Colpito: 5 (1d6+2) danni perforanti."],["Arco lungo","Attacco con arma a distanza: +4 al colpire, gittata 45/180 m. Colpito: 6 (1d8+2) danni perforanti."]]},
-{n:"Shadow",it:"Ombra",src:"MM",cr:"1/2",sz:"Media",tp:"non morto",al:"caotico malvagio",ac:"12",hp:"16 (3d8+3)",spd:"12 m",ab:[6,14,13,6,10,8],sk:"Furtività +4 (+6 in luce fioca o oscurità)",vul:"radiosi",res:"acido, freddo, fuoco, fulmine, tuono; contundenti, perforanti e taglienti non magici",imm:"necrotici, veleno",cim:"affascinato, afferrato, avvelenato, paralizzato, pietrificato, prono, sfinimento, spaventato, trattenuto",sen:"scurovisione 18 m, Percezione passiva 10",lg:"—",env:["sottosuolo","urbano","qualsiasi"],tr:[["Furtività nell'Ombra","In luce fioca o oscurità può Nascondersi come azione bonus."],["Debolezza alla Luce Solare","In luce solare ha svantaggio a tiri per colpire, prove e TS."],["Anfibio d'Ombra? — Amorfo","Può passare attraverso spazi larghi 2,5 cm senza strizzarsi."]],act:[["Assorbire Forza","Attacco con arma da mischia: +4 al colpire, portata 1,5 m. Colpito: 9 (2d6+2) danni necrotici, e la Forza del bersaglio è ridotta di 1d4. Se la Forza scende a 0 il bersaglio muore (e dal cadavere sorge una nuova ombra dopo 1d4 ore, se umanoide)."]]},
+{n:"Shadow",it:"Ombra",src:"MM",cr:"1/2",sz:"Media",tp:"non morto",al:"caotico malvagio",ac:"12",hp:"16 (3d8+3)",spd:"12 m",ab:[6,14,13,6,10,8],sk:"Furtività +4 (+6 in luce fioca o oscurità)",vul:"radiosi",res:"acido, freddo, fuoco, fulmine, tuono; contundenti, perforanti e taglienti non magici",imm:"necrotici, veleno",cim:"affascinato, afferrato, avvelenato, paralizzato, pietrificato, prono, sfinimento, spaventato, trattenuto",sen:"scurovisione 18 m, Percezione passiva 10",lg:"—",env:["sottosuolo","urbano","qualsiasi"],tr:[["Furtività nell'Ombra","In luce fioca o oscurità può Nascondersi come azione bonus."],["Debolezza alla Luce Solare","In luce solare ha svantaggio a tiri per colpire, prove e TS."],["Amorfa","Può passare attraverso spazi larghi 2,5 cm senza strizzarsi."]],act:[["Assorbire Forza","Attacco con arma da mischia: +4 al colpire, portata 1,5 m. Colpito: 9 (2d6+2) danni necrotici, e la Forza del bersaglio è ridotta di 1d4. Se la Forza scende a 0 il bersaglio muore (e dal cadavere sorge una nuova ombra dopo 1d4 ore, se umanoide)."]]},
 {n:"Thug",it:"Scagnozzo",src:"MM",cr:"1/2",sz:"Media",tp:"umanoide",al:"non buono",ac:"11 (armatura di cuoio)",hp:"32 (5d8+10)",spd:"9 m",ab:[15,11,14,10,10,11],sk:"Intimidire +2",sen:"Percezione passiva 10",lg:"una lingua qualsiasi",env:["urbano"],tr:[["Tattiche di Branco","Vantaggio ai tiri per colpire se un alleato è entro 1,5 m dal bersaglio."]],act:[["Multiattacco","Due attacchi con la mazza."],["Mazza","Attacco con arma da mischia: +4 al colpire, portata 1,5 m. Colpito: 5 (1d6+2) danni contundenti."],["Balestra pesante","Attacco con arma a distanza: +2 al colpire, gittata 30/120 m. Colpito: 5 (1d10) danni perforanti."]]},
 {n:"Warhorse",it:"Cavallo da Guerra",src:"MM",cr:"1/2",sz:"Grande",tp:"bestia",al:"non allineato",ac:"11",hp:"19 (3d10+3)",spd:"18 m",ab:[18,12,13,2,12,7],sen:"Percezione passiva 11",lg:"—",env:["urbano","pianura"],tr:[["Carica al Galoppo","Se si muove di almeno 6 m verso il bersaglio e colpisce con gli zoccoli, il bersaglio deve superare un TS su Forza CD 14 o cadere prono; se prono, il cavallo può fare un altro attacco con gli zoccoli come azione bonus."]],act:[["Zoccoli","Attacco con arma da mischia: +6 al colpire, portata 1,5 m. Colpito: 11 (2d6+4) danni contundenti."]]},
 {n:"Worg",it:"Worg",src:"MM",cr:"1/2",sz:"Grande",tp:"mostruosità",al:"neutrale malvagio",ac:"13 (armatura naturale)",hp:"26 (4d10+4)",spd:"15 m",ab:[16,13,13,7,11,8],sk:"Percezione +4",sen:"scurovisione 18 m, Percezione passiva 14",lg:"Goblin, Worg",env:["collina","pianura","foresta"],tr:[["Udito e Olfatto Acuti","Vantaggio alle prove di Percezione basate su udito o olfatto."]],act:[["Morso","Attacco con arma da mischia: +5 al colpire, portata 1,5 m. Colpito: 10 (2d6+3) danni perforanti; se il bersaglio è una creatura, TS su Forza CD 13 o cade prono."]]},
@@ -601,22 +671,129 @@ const MONSTERS=[
 {n:"Darkling",it:"Darkling",src:"VGtM/MPMM",cr:"1/2",sz:"Piccola",tp:"fata",al:"caotico neutrale",ac:"14 (armatura di cuoio)",hp:"13 (3d6+3)",spd:"9 m",ab:[9,16,12,10,12,10],sk:"Acrobazia +5, Inganno +2, Percezione +5, Furtività +7",sen:"vista cieca 9 m, scurovisione 36 m, Percezione passiva 15",lg:"Elfico, Silvano",env:["sottosuolo","urbano","foresta"],tr:[["Esplosione di Morte","Quando muore esplode in luce abbagliante: chi è entro 3 m e può vederlo, TS su Costituzione CD 10 o accecato fino a fine del suo prossimo turno."],["Sensibilità alla Luce","In luce intensa ha svantaggio a tiri per colpire e Percezione (vista)."]],act:[["Pugnale","Attacco con arma da mischia o a distanza: +5 al colpire, portata 1,5 m o gittata 6/18 m. Colpito: 5 (1d4+3) danni perforanti; se colpisce con vantaggio, infligge 7 (2d6) danni extra."]]},
 {n:"Quickling",it:"Quickling",src:"VGtM/MPMM",cr:"1",sz:"Minuscola",tp:"fata",al:"caotico malvagio",ac:"16",hp:"10 (3d4+3)",spd:"36 m",ab:[4,23,13,10,12,7],sk:"Acrobazia +8, Percezione +5, Rapidità di Mano +8, Furtività +8",sen:"scurovisione 18 m, Percezione passiva 15",lg:"Comune, Silvano",env:["foresta"],tr:[["Sfocato dal Movimento","Gli attacchi contro di lui hanno svantaggio, a meno che non sia incapacitato o la sua velocità sia 0."],["Evasione","Sui TS su Destrezza per dimezzare i danni: nessun danno se supera, metà se fallisce."]],act:[["Multiattacco","Tre attacchi con il pugnale."],["Pugnale","Attacco con arma da mischia o a distanza: +8 al colpire, portata 1,5 m o gittata 6/18 m. Colpito: 8 (1d4+6) danni perforanti."]]},
 {n:"Vargouille",it:"Vargouille",src:"VGtM/MPMM",cr:"1",sz:"Minuscola",tp:"immondo",al:"caotico malvagio",ac:"12",hp:"13 (3d4+6)",spd:"1,5 m, volo 12 m",ab:[6,14,14,3,7,2],res:"freddo, fuoco, fulmine",imm:"veleno",cim:"avvelenato",sen:"scurovisione 18 m, Percezione passiva 8",lg:"capisce Abissale, Comune e Infernale ma non parla",env:["sottosuolo"],act:[["Morso","Attacco con arma da mischia: +4 al colpire, portata 1,5 m. Colpito: 5 (1d6+2) danni perforanti, e TS su Costituzione CD 12 o 5 (2d4) danni da veleno; i pf persi per questo veleno si recuperano solo con magia o riposo lungo."],["Strillo Stordente (1/giorno)","Ogni non-immondo entro 9 m che può udirlo: TS su Saggezza CD 12 o spaventato fino a fine del prossimo turno della vargouille."],["Bacio Maledetto","Bacia un umanoide incapacitato: TS su Carisma CD 12 o maledetto: nel giro di ore la testa della vittima si trasforma e si stacca, diventando una nuova vargouille. La trasformazione avanza solo al buio e si annulla con remove curse o greater restoration."]]},
-{n:"Maw Demon",it:"Demone Fauce",src:"VGtM/MPMM",cr:"1",sz:"Media",tp:"immondo (demone)",al:"caotico malvagio",ac:"13 (armatura naturale)",hp:"33 (6d8+6)",spd:"9 m",ab:[14,8,13,5,8,5],res:"freddo, fuoco, fulmine",imm:"veleno",cim:"affascinato, avvelenato, spaventato",sen:"scurovisione 18 m, Percezione passiva 9",lg:"capisce l'Abissale ma non parla",env:["sottosuolo","pianura"],tr:[["Divorare Rumorosamente... Ingordigia","Ha vantaggio ai tiri per colpire contro creature che non hanno tutti i pf."]],act:[["Morso","Attacco con arma da mischia: +4 al colpire, portata 1,5 m. Colpito: 11 (2d8+2) danni perforanti."]]},
+{n:"Maw Demon",it:"Demone Fauce",src:"VGtM/MPMM",cr:"1",sz:"Media",tp:"immondo (demone)",al:"caotico malvagio",ac:"13 (armatura naturale)",hp:"33 (6d8+6)",spd:"9 m",ab:[14,8,13,5,8,5],res:"freddo, fuoco, fulmine",imm:"veleno",cim:"affascinato, avvelenato, spaventato",sen:"scurovisione 18 m, Percezione passiva 9",lg:"capisce l'Abissale ma non parla",env:["sottosuolo","pianura"],tr:[["Dilaniare","Come azione bonus, dopo aver ridotto una creatura a 0 pf con un attacco in mischia, può muoversi di metà velocità e fare un attacco col morso."]],act:[["Morso","Attacco con arma da mischia: +4 al colpire, portata 1,5 m. Colpito: 11 (2d8+2) danni perforanti."]]},
 {n:"Sea Spawn",it:"Progenie Marina",src:"VGtM/MPMM",cr:"1",sz:"Media",tp:"umanoide",al:"neutrale malvagio",ac:"11 (armatura naturale)",hp:"32 (5d8+10)",spd:"6 m, nuoto 9 m",ab:[15,8,15,6,10,8],sen:"scurovisione 36 m, Percezione passiva 10",lg:"capisce Aquan e Comune ma non parla",env:["costa","acqua"],tr:[["Anfibio Limitato","Può respirare aria e acqua, ma deve immergersi almeno una volta ogni 4 ore per non soffocare."]],act:[["Multiattacco","Due colpi senz'armi e un attacco con l'appendice piscina."],["Colpo Senz'Armi","Attacco con arma da mischia: +4 al colpire, portata 1,5 m. Colpito: 4 (1d4+2) danni contundenti."],["Appendice Piscina","Attacco con arma da mischia: +4 al colpire, portata 1,5 m. Colpito: 4 (1d4+2) danni perforanti (tentacolo, chela o bocca di lampreda)."]]},
 {n:"Shadow Mastiff",it:"Mastino d'Ombra",src:"VGtM/MPMM",cr:"2",sz:"Media",tp:"mostruosità",al:"neutrale malvagio",ac:"12",hp:"33 (6d8+6)",spd:"12 m",ab:[16,14,13,5,12,5],sk:"Percezione +3, Furtività +6",res:"in luce fioca o oscurità: contundenti, perforanti e taglienti non magici",sen:"scurovisione 18 m, Percezione passiva 13",lg:"—",env:["foresta","palude","qualsiasi"],tr:[["Fusione con l'Ombra","In luce fioca o oscurità può Nascondersi come azione bonus."],["Udito e Olfatto Acuti","Vantaggio alle prove di Percezione basate su udito o olfatto."],["Sensibilità alla Luce Solare","Svantaggio a tiri per colpire e Percezione (vista) in luce solare diretta."]],act:[["Morso","Attacco con arma da mischia: +5 al colpire, portata 1,5 m. Colpito: 10 (2d6+3) danni perforanti; se il bersaglio è una creatura, TS su Forza CD 13 o prono."]]},
-{n:"Redcap",it:"Redcap",src:"VGtM/MPMM",cr:"3",sz:"Piccola",tp:"fata",al:"caotico malvagio",ac:"13 (armatura naturale)",hp:"45 (6d6+24)",spd:"7,5 m",ab:[18,13,18,10,12,9],sk:"Atletica +6, Percezione +3",sen:"scurovisione 18 m, Percezione passiva 13",lg:"Comune, Silvano",env:["foresta","palude","collina"],tr:[["Stivali di Ferro","Rumorosissimo: svantaggio alle prove di Furtività basate sul... che si affidano al silenzio."],["Passo... Falcata Assassina","Può muoversi della sua velocità verso una creatura ostile che vede come azione bonus."]],act:[["Multiattacco","Tre attacchi con la falce malvagia."],["Falce Malvagia","Attacco con arma da mischia: +6 al colpire, portata 1,5 m. Colpito: 9 (2d4+4) danni taglienti."],["Stivali Chiodati","Attacco con arma da mischia: +6 al colpire, portata 1,5 m, un bersaglio prono. Colpito: 11 (2d6+4) danni contundenti."]]},
-{n:"Leucrotta",it:"Leucrotta",src:"VGtM/MPMM",cr:"3",sz:"Grande",tp:"mostruosità",al:"caotico malvagio",ac:"14 (armatura naturale)",hp:"67 (9d10+18)",spd:"15 m",ab:[18,14,15,9,12,6],sk:"Inganno +2, Percezione +3",sen:"scurovisione 18 m, Percezione passiva 13",lg:"Abissale, Gnoll",env:["pianura","deserto"],tr:[["Calci all'Indietro","Quando usa Disingaggio, può fare un attacco con gli zoccoli contro una creatura entro 1,5 m."],["Mimetismo","Imita voci e versi (Intuizione CD 14 per scoprire l'inganno)."],["Udito e Olfatto Acuti","Vantaggio alle prove di Percezione basate su udito o olfatto."]],act:[["Multiattacco","Un morso e un attacco con gli zoccoli."],["Morso","Attacco con arma da mischia: +6 al colpire, portata 1,5 m. Colpito: 8 (1d8+4) danni perforanti; con un critico strappa la carne: il bersaglio subisce... infligge un dado di danno extra."],["Zoccoli","Attacco con arma da mischia: +6 al colpire, portata 1,5 m. Colpito: 11 (2d6+4) danni contundenti."]]},
+{n:"Redcap",it:"Redcap",src:"VGtM/MPMM",cr:"3",sz:"Piccola",tp:"fata",al:"caotico malvagio",ac:"13 (armatura naturale)",hp:"45 (6d6+24)",spd:"7,5 m",ab:[18,13,18,10,12,9],sk:"Atletica +6, Percezione +3",sen:"scurovisione 18 m, Percezione passiva 13",lg:"Comune, Silvano",env:["foresta","palude","collina"],tr:[["Stivali di Ferro","I suoi stivali di ferro sono rumorosi: svantaggio alle prove di Furtività basate sul muoversi in silenzio."],["Falcata Assassina","Come azione bonus può muoversi fino alla propria velocità verso una creatura ostile che vede."]],act:[["Multiattacco","Tre attacchi con la falce malvagia."],["Falce Malvagia","Attacco con arma da mischia: +6 al colpire, portata 1,5 m. Colpito: 9 (2d4+4) danni taglienti."],["Stivali Chiodati","Attacco con arma da mischia: +6 al colpire, portata 1,5 m, un bersaglio prono. Colpito: 11 (2d6+4) danni contundenti."]]},
+{n:"Leucrotta",it:"Leucrotta",src:"VGtM/MPMM",cr:"3",sz:"Grande",tp:"mostruosità",al:"caotico malvagio",ac:"14 (armatura naturale)",hp:"67 (9d10+18)",spd:"15 m",ab:[18,14,15,9,12,6],sk:"Inganno +2, Percezione +3",sen:"scurovisione 18 m, Percezione passiva 13",lg:"Abissale, Gnoll",env:["pianura","deserto"],tr:[["Calci all'Indietro","Quando usa Disingaggio, può fare un attacco con gli zoccoli contro una creatura entro 1,5 m."],["Mimetismo","Imita voci e versi (Intuizione CD 14 per scoprire l'inganno)."],["Udito e Olfatto Acuti","Vantaggio alle prove di Percezione basate su udito o olfatto."]],act:[["Multiattacco","Un morso e un attacco con gli zoccoli."],["Morso","Attacco con arma da mischia: +6 al colpire, portata 1,5 m. Colpito: 8 (1d8+4) danni perforanti; con un colpo critico infligge un dado di danno extra."],["Zoccoli","Attacco con arma da mischia: +6 al colpire, portata 1,5 m. Colpito: 11 (2d6+4) danni contundenti."]]},
 {n:"Sword Wraith Warrior",it:"Guerriero Spettro di Spada",src:"MToF/MPMM",cr:"3",sz:"Media",tp:"non morto",al:"legale malvagio",ac:"16 (camicia di maglia, scudo)",hp:"45 (6d8+18)",spd:"9 m",ab:[18,10,17,6,9,10],res:"necrotici; contundenti, perforanti e taglienti non magici",imm:"veleno",cim:"affascinato, avvelenato, sfinimento, spaventato",sen:"scurovisione 18 m, Percezione passiva 9",lg:"le lingue che conosceva in vita",env:["pianura","palude","qualsiasi"],tr:[["Furia Marziale","Come azione bonus può fare un attacco con la spada lunga; se lo fa, fino a inizio del suo prossimo turno gli attacchi contro di lui hanno vantaggio."]],act:[["Spada lunga","Attacco con arma da mischia: +6 al colpire, portata 1,5 m. Colpito: 8 (1d8+4) danni taglienti, o 9 (1d10+4) a due mani."],["Arco lungo","Attacco con arma a distanza: +2 al colpire, gittata 45/180 m. Colpito: 4 (1d8) danni perforanti."]]},
-{n:"Barghest",it:"Barghest",src:"VGtM/MPMM",cr:"4",sz:"Grande",tp:"immondo",al:"neutrale malvagio",ac:"17 (armatura naturale)",hp:"90 (12d10+24)",spd:"18 m (9 m in forma di goblin)",ab:[19,15,14,13,12,14],sk:"Inganno +4, Intimidire +4, Percezione +5, Furtività +4",res:"freddo, fuoco, fulmine; contundenti, perforanti e taglienti non magici",imm:"acido, veleno",cim:"avvelenato",sen:"vista cieca 18 m, scurovisione 18 m, Percezione passiva 15",lg:"Abissale, Comune, Goblin, Infernale, telepatia 18 m",env:["collina","sottosuolo"],tr:[["Mutaforma","Può trasformarsi in un goblin Piccolo o tornare alla vera forma canina."],["Banchetto d'Anime","Quando uccide un goblin, può divorarne l'anima in 1 minuto (la vittima può essere riportata in vita solo con wish)."],["Vulnerabilità al Fuoco... Fuoco Fatato","Se subisce danni da fuoco di origine magica, è spaventato... — Sensibilità: se inizia il turno in un fuoco acceso, deve superare TS o fuggire."]],act:[["Multiattacco","Un morso e un attacco con gli artigli."],["Morso","Attacco con arma da mischia: +6 al colpire, portata 1,5 m. Colpito: 11 (2d6+4) danni perforanti."],["Artigli","Attacco con arma da mischia: +6 al colpire, portata 1,5 m. Colpito: 8 (1d8+4) danni taglienti."]]},
-{n:"Yeth Hound",it:"Segugio Yeth",src:"VGtM/MPMM",cr:"4",sz:"Grande",tp:"immondo",al:"neutrale malvagio",ac:"14 (armatura naturale)",hp:"51 (6d10+18)",spd:"12 m, volo 12 m (fluttua)",ab:[18,17,16,5,12,7],sk:"Percezione +5... Percezione +3",res:"contundenti, perforanti e taglienti non magici e non d'argento",cim:"affascinato, sfinimento, spaventato",sen:"scurovisione 18 m, Percezione passiva 13",lg:"capisce Comune, Elfico e Silvano ma non parla",env:["foresta","collina","qualsiasi"],tr:[["Bando Solare","La luce solare lo bandisce nel Piano Etereo... in luce solare svanisce nel Piano Etereo finché non torna la notte."],["Udito e Olfatto Acuti","Vantaggio alle prove di Percezione basate su udito o olfatto."],["Telepatia del Branco","Comunica telepaticamente con gli altri segugi yeth entro 30 m."]],act:[["Morso","Attacco con arma da mischia: +6 al colpire, portata 1,5 m. Colpito: 11 (2d6+4) danni perforanti; il bersaglio deve superare un TS su Forza CD 14 o essere buttato prono."],["Ululato Terrificante","Ogni nemico entro 90 m che può udirlo: TS su Saggezza CD 13 o spaventato per 1 minuto (chi termina il turno senza vedere il segugio può ripetere il TS); con successo immune per 24 ore."]]},
+{n:"Barghest",it:"Barghest",src:"VGtM/MPMM",cr:"4",sz:"Grande",tp:"immondo",al:"neutrale malvagio",ac:"17 (armatura naturale)",hp:"90 (12d10+24)",spd:"18 m (9 m in forma di goblin)",ab:[19,15,14,13,12,14],sk:"Inganno +4, Intimidire +4, Percezione +5, Furtività +4",res:"freddo, fuoco, fulmine; contundenti, perforanti e taglienti non magici",imm:"acido, veleno",cim:"avvelenato",sen:"vista cieca 18 m, scurovisione 18 m, Percezione passiva 15",lg:"Abissale, Comune, Goblin, Infernale, telepatia 18 m",env:["collina","sottosuolo"],tr:[["Mutaforma","Può trasformarsi in un goblin Piccolo o tornare alla vera forma canina."],["Banchetto d'Anime","Quando uccide un goblin, può divorarne l'anima in 1 minuto (la vittima può essere riportata in vita solo con wish)."],["Avversione al Fuoco","Se subisce danni da fuoco, ha svantaggio a tiri per colpire e prove di caratteristica fino alla fine del suo prossimo turno."]],act:[["Multiattacco","Un morso e un attacco con gli artigli."],["Morso","Attacco con arma da mischia: +6 al colpire, portata 1,5 m. Colpito: 11 (2d6+4) danni perforanti."],["Artigli","Attacco con arma da mischia: +6 al colpire, portata 1,5 m. Colpito: 8 (1d8+4) danni taglienti."]]},
+{n:"Yeth Hound",it:"Segugio Yeth",src:"VGtM/MPMM",cr:"4",sz:"Grande",tp:"immondo",al:"neutrale malvagio",ac:"14 (armatura naturale)",hp:"51 (6d10+18)",spd:"12 m, volo 12 m (fluttua)",ab:[18,17,16,5,12,7],sk:"Percezione +3",res:"contundenti, perforanti e taglienti non magici e non d'argento",cim:"affascinato, sfinimento, spaventato",sen:"scurovisione 18 m, Percezione passiva 13",lg:"capisce Comune, Elfico e Silvano ma non parla",env:["foresta","collina","qualsiasi"],tr:[["Bando Solare","In luce solare svanisce nel Piano Etereo e vi resta finché non cala la notte."],["Udito e Olfatto Acuti","Vantaggio alle prove di Percezione basate su udito o olfatto."],["Telepatia del Branco","Comunica telepaticamente con gli altri segugi yeth entro 30 m."]],act:[["Morso","Attacco con arma da mischia: +6 al colpire, portata 1,5 m. Colpito: 11 (2d6+4) danni perforanti; il bersaglio deve superare un TS su Forza CD 14 o essere buttato prono."],["Ululato Terrificante","Ogni nemico entro 90 m che può udirlo: TS su Saggezza CD 13 o spaventato per 1 minuto (chi termina il turno senza vedere il segugio può ripetere il TS); con successo immune per 24 ore."]]},
 {n:"Banderhobb",it:"Banderhobb",src:"VGtM/MPMM",cr:"5",sz:"Grande",tp:"mostruosità",al:"neutrale malvagio",ac:"15 (armatura naturale)",hp:"84 (8d10+40)",spd:"9 m",ab:[20,12,20,11,14,8],sk:"Atletica +8, Percezione +5, Furtività +7",res:"freddo",cim:"affascinato, spaventato",sen:"scurovisione 36 m, Percezione passiva 15",lg:"capisce Comune e Goblin ma non parla",env:["urbano","palude","sottosuolo"],tr:[["Passo d'Ombra","In luce fioca o oscurità può teletrasportarsi come azione bonus fino a 9 m da un'ombra a un'altra; poi ha vantaggio al primo attacco in mischia prima della fine del turno."]],act:[["Multiattacco","Un morso e un attacco con la lingua o Inghiottire."],["Morso","Attacco con arma da mischia: +8 al colpire, portata 1,5 m. Colpito: 22 (5d6+5) danni perforanti, e il bersaglio è afferrato (CD 15) se Medio o inferiore."],["Lingua","Attacco con arma da mischia: +8 al colpire, portata 4,5 m. Colpito: 10 (3d6) danni necrotici, e TS su Forza CD 15 o trascinato fino a 4,5 m verso il banderhobb."],["Inghiottire","Una creatura Media o inferiore afferrata: TS su Forza CD 15 o inghiottita: accecata, trattenuta, 10 (3d6) danni necrotici all'inizio di ogni turno del banderhobb; il banderhobb può inghiottire una sola creatura alla volta."]]},
-{n:"Wood Woad",it:"Guardiano di Legno",src:"VGtM/MPMM",cr:"5",sz:"Media",tp:"vegetale",al:"legale neutrale",ac:"18 (armatura naturale, scudo)",hp:"75 (10d8+30)",spd:"9 m, scalata 9 m",ab:[18,12,16,10,13,8],sk:"Atletica +7, Percezione +4, Furtività +4",vul:"fuoco",res:"contundenti, perforanti",cim:"affascinato, spaventato",sen:"scurovisione 18 m, Percezione passiva 14",lg:"Silvano",env:["foresta"],tr:[["Passo tra le Piante","Una volta per turno può usare 3 m di movimento per entrare in un albero e uscire da un altro entro 18 m."],["Colpo... Maestria con la Clava","La sua clava è magica finché la impugna e infligge 2d6 extra (inclusi)."],["Sensi della Foresta... Simbiosi","Se muore, l'albero a cui è legato appassisce."]],act:[["Multiattacco","Due attacchi con la clava."],["Clava","Attacco con arma da mischia: +7 al colpire, portata 1,5 m. Colpito: 11 (2d6+4) danni contundenti più 7 (2d6) danni contundenti magici."]]},
-{n:"Spawn of Kyuss",it:"Progenie di Kyuss",src:"MToF/MPMM",cr:"5",sz:"Media",tp:"non morto",al:"caotico malvagio",ac:"10",hp:"76 (9d8+36)",spd:"9 m",ab:[16,11,18,5,7,3],res:"necrotici; contundenti, perforanti e taglienti non magici",imm:"veleno",cim:"affascinato, avvelenato, sfinimento",sen:"scurovisione 18 m, Percezione passiva 8",lg:"capisce le lingue che conosceva in vita ma non parla",env:["palude","sottosuolo","qualsiasi"],tr:[["Rigenerazione","Recupera 10 pf all'inizio del suo turno se ha almeno 1 pf; danni radiosi o da fuoco bloccano la rigenerazione al turno successivo."],["Vermi Ripugnanti","Chi lo colpisce in mischia entro 1,5 m... — vedi Verme sotto."]],act:[["Multiattacco","Due attacchi con gli artigli e usa Verme Scavatore se può."],["Artiglio","Attacco con arma da mischia: +6 al colpire, portata 1,5 m. Colpito: 12 (2d8+3) danni taglienti."],["Verme Scavatore","Lancia un verme su una creatura entro 3 m: TS su Destrezza CD 11 o il verme si attacca e scava nella carne: 1 danno perforante... a inizio di ogni turno la vittima subisce 7 (2d6) danni necrotici finché il verme non è rimosso (danni da fuoco o taglio sulla ferita, o cure magiche). Dopo... se la vittima muore così, sorge come progenie di Kyuss dopo... in 1d4... 10 minuti."]]},
-{n:"Bodak",it:"Bodak",src:"VGtM/MPMM",cr:"6",sz:"Media",tp:"non morto",al:"caotico malvagio",ac:"15 (armatura naturale)",hp:"58 (9d8+18)",spd:"9 m",ab:[15,16,15,7,12,12],sk:"Percezione +4, Furtività +6",res:"freddo, fuoco, necrotici; contundenti, perforanti e taglienti non magici",imm:"fulmine, veleno",cim:"affascinato, spaventato, avvelenato",sen:"scurovisione 36 m, Percezione passiva 14",lg:"Abissale",env:["sottosuolo","qualsiasi"],tr:[["Aura di Annientamento","A inizio del suo turno può attivare/disattivare un'aura di 9 m: ogni creatura e pianta non non-morta che inizia il turno nell'aura subisce 5 danni necrotici; il bodak recupera... "],["Sguardo Mortale","Se una creatura inizia il turno entro 9 m e i due si vedono, il bodak può costringerla a un TS su Costituzione CD 13 (se non distoglie lo sguardo): se fallisce di 5 o più scende a 0 pf, altrimenti subisce 16 (3d10) danni necrotici."],["Sensibilità alla Luce Solare","In luce solare subisce 5 danni radiosi a inizio turno e ha svantaggio a tiri per colpire e prove."]],act:[["Pugno","Attacco con arma da mischia: +5 al colpire, portata 1,5 m. Colpito: 6 (1d8+2) danni contundenti più 9 (2d8) danni necrotici."],["Sguardo Estenuante","Una creatura entro 18 m: TS su Costituzione CD 13 o 22 (4d10) danni necrotici e spaventata fino a fine del prossimo turno del bodak (dimezzati e non spaventata se supera)."]]},
-{n:"Flind",it:"Flind",src:"VGtM/MPMM",cr:"9",sz:"Media",tp:"umanoide (gnoll)",al:"caotico malvagio",ac:"16 (camicia di maglia... cotta di maglia)",hp:"127 (15d8+60)",spd:"9 m",ab:[20,14,19,11,13,12],sv:"Cos +8, Sag +5",sk:"Intimidire +5, Percezione +5",sen:"scurovisione 18 m, Percezione passiva 15",lg:"Gnoll",env:["pianura","deserto"],tr:[["Aura di Furia... Dilaniare","Come azione bonus, dopo aver ridotto una creatura a 0 pf con un attacco in mischia, può muoversi di metà velocità e fare un attacco col morso."]],act:[["Multiattacco","Tre attacchi col mazzafrusto, uno per testa... tre attacchi diversi col mazzafrusto: dolore, follia e paralisi."],["Mazzafrusto del Dolore","Attacco con arma da mischia: +9 al colpire, portata 1,5 m. Colpito: 10 (2d4+5) danni contundenti più 22 (4d10) danni psichici."],["Mazzafrusto della Follia","Attacco con arma da mischia: +9 al colpire, portata 1,5 m. Colpito: 10 (2d4+5) danni contundenti, e TS su Saggezza CD 16 o per 1 minuto attacca in mischia la creatura più vicina (ripete il TS a fine di ogni suo turno)."],["Mazzafrusto della Paralisi","Attacco con arma da mischia: +9 al colpire, portata 1,5 m. Colpito: 10 (2d4+5) danni contundenti, e TS su Costituzione CD 16 o paralizzato per 1 minuto (ripete il TS a fine di ogni suo turno)."],["Morso","Attacco con arma da mischia: +9 al colpire, portata 1,5 m. Colpito: 7 (1d4+5) danni perforanti."]]},
+{n:"Wood Woad",it:"Guardiano di Legno",src:"VGtM/MPMM",cr:"5",sz:"Media",tp:"vegetale",al:"legale neutrale",ac:"18 (armatura naturale, scudo)",hp:"75 (10d8+30)",spd:"9 m, scalata 9 m",ab:[18,12,16,10,13,8],sk:"Atletica +7, Percezione +4, Furtività +4",vul:"fuoco",res:"contundenti, perforanti",cim:"affascinato, spaventato",sen:"scurovisione 18 m, Percezione passiva 14",lg:"Silvano",env:["foresta"],tr:[["Passo tra le Piante","Una volta per turno può usare 3 m di movimento per entrare in un albero e uscire da un altro entro 18 m."],["Maestria con la Clava","La sua clava è magica finché la impugna e infligge 7 (2d6) danni extra (già inclusi)."],["Simbiosi","Se muore, l'albero a cui è legato appassisce."]],act:[["Multiattacco","Due attacchi con la clava."],["Clava","Attacco con arma da mischia: +7 al colpire, portata 1,5 m. Colpito: 11 (2d6+4) danni contundenti più 7 (2d6) danni contundenti magici."]]},
+{n:"Spawn of Kyuss",it:"Progenie di Kyuss",src:"MToF/MPMM",cr:"5",sz:"Media",tp:"non morto",al:"caotico malvagio",ac:"10",hp:"76 (9d8+36)",spd:"9 m",ab:[16,11,18,5,7,3],res:"necrotici; contundenti, perforanti e taglienti non magici",imm:"veleno",cim:"affascinato, avvelenato, sfinimento",sen:"scurovisione 18 m, Percezione passiva 8",lg:"capisce le lingue che conosceva in vita ma non parla",env:["palude","sottosuolo","qualsiasi"],tr:[["Rigenerazione","Recupera 10 pf all'inizio del suo turno se ha almeno 1 pf; danni radiosi o da fuoco bloccano la rigenerazione al turno successivo."]],act:[["Multiattacco","Due attacchi con gli artigli e usa Verme Scavatore se può."],["Artiglio","Attacco con arma da mischia: +6 al colpire, portata 1,5 m. Colpito: 12 (2d8+3) danni taglienti."],["Verme Scavatore","Lancia un verme su una creatura entro 3 m: TS su Destrezza CD 11 o il verme si attacca e scava nella carne: all'inizio di ogni suo turno la vittima subisce 7 (2d6) danni necrotici finché il verme non è rimosso (con danni da fuoco sulla ferita o con cure magiche). Se la vittima muore con il verme addosso, sorge come progenie di Kyuss dopo 10 minuti."]]},
+{n:"Bodak",it:"Bodak",src:"VGtM/MPMM",cr:"6",sz:"Media",tp:"non morto",al:"caotico malvagio",ac:"15 (armatura naturale)",hp:"58 (9d8+18)",spd:"9 m",ab:[15,16,15,7,12,12],sk:"Percezione +4, Furtività +6",res:"freddo, fuoco, necrotici; contundenti, perforanti e taglienti non magici",imm:"fulmine, veleno",cim:"affascinato, spaventato, avvelenato",sen:"scurovisione 36 m, Percezione passiva 14",lg:"Abissale",env:["sottosuolo","qualsiasi"],tr:[["Aura di Annientamento","A inizio del suo turno può attivare/disattivare un'aura di 9 m: ogni creatura non non-morta che inizia il turno nell'aura subisce 5 danni necrotici; le piante ordinarie nell'aura appassiscono."],["Sguardo Mortale","Se una creatura inizia il turno entro 9 m e i due si vedono, il bodak può costringerla a un TS su Costituzione CD 13 (se non distoglie lo sguardo): se fallisce di 5 o più scende a 0 pf, altrimenti subisce 16 (3d10) danni necrotici."],["Sensibilità alla Luce Solare","In luce solare subisce 5 danni radiosi a inizio turno e ha svantaggio a tiri per colpire e prove."]],act:[["Pugno","Attacco con arma da mischia: +5 al colpire, portata 1,5 m. Colpito: 6 (1d8+2) danni contundenti più 9 (2d8) danni necrotici."],["Sguardo Estenuante","Una creatura entro 18 m: TS su Costituzione CD 13 o 22 (4d10) danni necrotici e spaventata fino a fine del prossimo turno del bodak (dimezzati e non spaventata se supera)."]]},
+{n:"Flind",it:"Flind",src:"VGtM/MPMM",cr:"9",sz:"Media",tp:"umanoide (gnoll)",al:"caotico malvagio",ac:"16 (cotta di maglia)",hp:"127 (15d8+60)",spd:"9 m",ab:[20,14,19,11,13,12],sv:"Cos +8, Sag +5",sk:"Intimidire +5, Percezione +5",sen:"scurovisione 18 m, Percezione passiva 15",lg:"Gnoll",env:["pianura","deserto"],tr:[["Dilaniare","Come azione bonus, dopo aver ridotto una creatura a 0 pf con un attacco in mischia, può muoversi di metà velocità e fare un attacco col morso."]],act:[["Multiattacco","Tre attacchi col mazzafrusto, uno per tipo: dolore, follia e paralisi."],["Mazzafrusto del Dolore","Attacco con arma da mischia: +9 al colpire, portata 1,5 m. Colpito: 10 (2d4+5) danni contundenti più 22 (4d10) danni psichici."],["Mazzafrusto della Follia","Attacco con arma da mischia: +9 al colpire, portata 1,5 m. Colpito: 10 (2d4+5) danni contundenti, e TS su Saggezza CD 16 o per 1 minuto attacca in mischia la creatura più vicina (ripete il TS a fine di ogni suo turno)."],["Mazzafrusto della Paralisi","Attacco con arma da mischia: +9 al colpire, portata 1,5 m. Colpito: 10 (2d4+5) danni contundenti, e TS su Costituzione CD 16 o paralizzato per 1 minuto (ripete il TS a fine di ogni suo turno)."],["Morso","Attacco con arma da mischia: +9 al colpire, portata 1,5 m. Colpito: 7 (1d4+5) danni perforanti."]]},
 {n:"Alhoon",it:"Alhoon",src:"VGtM/MPMM",cr:"10",sz:"Media",tp:"non morto",al:"qualsiasi allineamento malvagio",ac:"15 (armatura naturale)",hp:"120 (16d8+48)",spd:"9 m",ab:[11,12,16,19,17,17],sv:"Cos +7, Int +8, Sag +7, Car +7",sk:"Arcano +8, Inganno +7, Intuizione +7, Percezione +7, Furtività +5",res:"freddo, fulmine, necrotici",imm:"veleno; contundenti, perforanti e taglienti non magici",cim:"affascinato, avvelenato, paralizzato, sfinimento, spaventato",sen:"vista pura 36 m, Percezione passiva 17",lg:"Profondo, Sottocomune, telepatia 36 m",env:["sottosuolo"],tr:[["Resistenza alla Magia","Vantaggio ai TS contro incantesimi ed effetti magici."],["Resistenza al Volgere","Vantaggio ai TS contro gli effetti che scacciano i non morti."],["Incantesimi","Incantatore di 12° livello (Int, CD 16, +8). Trucchetti: chill touch, dancing lights, mage hand, prestidigitation, shocking grasp. 1° (4): detect magic, disguise self, shield. 2° (3): invisibility, mirror image, scorching ray. 3° (3): counterspell, fly, lightning bolt. 4° (3): confusion, phantasmal killer. 5° (2): cone of cold, wall of force. 6° (1): disintegrate, globe of invulnerability."]],act:[["Tocco Gelido","Attacco con incantesimo da mischia: +8 al colpire, portata 1,5 m. Colpito: 10 (3d6) danni da freddo."],["Esplosione Mentale (Ricarica 5-6)","Cono di 18 m: TS su Intelligenza CD 16 o 22 (4d8+4) danni psichici e stordito per 1 minuto (ripete il TS a fine di ogni suo turno)."]]},
 {n:"Boneclaw",it:"Boneclaw",src:"MToF/MPMM",cr:"12",sz:"Grande",tp:"non morto",al:"caotico malvagio",ac:"16 (armatura naturale)",hp:"127 (17d10+34)",spd:"12 m",ab:[19,16,15,13,15,9],sv:"Des +8, Cos +7",sk:"Percezione +7, Furtività +8",res:"freddo, necrotici; contundenti, perforanti e taglienti non magici",imm:"veleno",cim:"affascinato, avvelenato, sfinimento, paralizzato",sen:"scurovisione 18 m, Percezione passiva 17",lg:"Comune più le lingue del suo padrone",env:["sottosuolo","urbano","qualsiasi"],tr:[["Salto d'Ombra","Come azione bonus può teletrasportarsi fino a 18 m tra zone di luce fioca od oscurità."],["Legame del Padrone","È legato a un padrone malvagio; sa direzione e distanza del padrone (stesso piano) e non può essere separato da lui a lungo."]],act:[["Multiattacco","Due attacchi con gli artigli."],["Artiglio Perforante","Attacco con arma da mischia: +9 al colpire, portata 4,5 m. Colpito: 20 (3d10+4) danni perforanti; se il bersaglio è una creatura, l'artiglio può inchiodarlo: è afferrato (CD 14) e subisce 13 (2d12) danni necrotici all'inizio di ogni turno del boneclaw finché la presa dura."]],rea:[["Contrattacco d'Ombra","Quando subisce danni da un attacco in condizioni di luce fioca od oscurità, può fare un attacco con l'artiglio contro l'attaccante se è a portata."]]},
 /*@M*/];
+/* ================= HOMEBREW ================= */
+const BASE_COUNT=MONSTERS.length;
+function hbAll(){return lsGet("enc_hb",[])}
+function loadHB(){MONSTERS.splice(BASE_COUNT);hbAll().forEach(m=>MONSTERS.push(m))}
+function withRemap(fn){
+  const encN=ENC.map(r=>({n:MONSTERS[r.i]?MONSTERS[r.i].n:null,q:r.q}));
+  const trkN=TRK.list.map(u=>u.mi>=0&&MONSTERS[u.mi]?MONSTERS[u.mi].n:null);
+  fn();
+  ENC=encN.map(e=>({i:MONSTERS.findIndex(m=>m.n===e.n),q:e.q})).filter(r=>r.i>=0);
+  TRK.list.forEach((u,k)=>{u.mi=trkN[k]?MONSTERS.findIndex(m=>m.n===trkN[k]):-1});
+  trkSave();initSelects();renderEnc();renderBest();
+}
+let hbEditIdx=-1;
+function openHb(){renderHbList();$("hbForm").style.display="none";$("hbListBar").style.display="";$("hbModal").style.display="flex"}
+function closeHb(){$("hbModal").style.display="none"}
+function renderHbList(){
+  const hb=hbAll();
+  $("hbList").innerHTML=hb.length?hb.map((m,k)=>`<div class="enc-row">
+    <span class="en" onclick="openSb(${BASE_COUNT+k})">${m.it}</span>
+    <span class="em">${m.n} · GS ${m.cr} · ${m.tp}</span>
+    <span style="margin-left:auto">
+      <button class="btn small" onclick="hbEdit(${k})">✏️ Modifica</button>
+      <button class="btn small" onclick="hbDel(${k})">🗑</button>
+    </span></div>`).join("")
+  :'<p style="color:var(--muted);margin-bottom:10px">Nessun mostro homebrew. Creane uno!</p>';
+}
+function hbNew(){hbEditIdx=-1;hbFill(null);$("hbForm").style.display="";$("hbListBar").style.display="none"}
+function hbEdit(k){hbEditIdx=k;hbFill(hbAll()[k]);$("hbForm").style.display="";$("hbListBar").style.display="none"}
+function hbCancel(){$("hbForm").style.display="none";$("hbListBar").style.display="";$("hbErr").textContent=""}
+const hbLines=arr=>(arr||[]).map(t=>t[0]+" | "+t[1]).join("\n");
+function hbFill(m){
+  $("hb_n").value=m?m.n:"";$("hb_it").value=m?m.it:"";
+  $("hb_cr").innerHTML=CRS.map(c=>`<option${(m?m.cr:"1")===c?" selected":""}>${c}</option>`).join("");
+  $("hb_sz").value=m?m.sz:"Media";$("hb_tp").value=m?m.tp:"";$("hb_al").value=m?m.al:"";
+  $("hb_ac").value=m?m.ac:"";$("hb_hp").value=m?m.hp:"";$("hb_spd").value=m?m.spd:"9 m";
+  for(let i=0;i<6;i++)$("hb_ab"+i).value=m?m.ab[i]:10;
+  $("hb_sv").value=m&&m.sv||"";$("hb_sk").value=m&&m.sk||"";$("hb_vul").value=m&&m.vul||"";
+  $("hb_res").value=m&&m.res||"";$("hb_imm").value=m&&m.imm||"";$("hb_cim").value=m&&m.cim||"";
+  $("hb_sen").value=m&&m.sen||"";$("hb_lg").value=m&&m.lg||"";
+  $("hb_env").value=m&&m.env?m.env.join(", "):"";
+  $("hb_tr").value=m?hbLines(m.tr):"";$("hb_act").value=m?hbLines(m.act):"";
+  $("hb_rea").value=m?hbLines(m.rea):"";$("hb_leg").value=m?hbLines(m.leg):"";
+  $("hbErr").textContent="";
+}
+function hbParseLines(txt,def){
+  return txt.split("\n").map(s=>s.trim()).filter(Boolean).map(s=>{
+    const p=s.split("|");return p.length>1?[p[0].trim(),p.slice(1).join("|").trim()]:[def,s]});
+}
+function hbRead(){
+  const m={
+    n:$("hb_n").value.trim(),it:$("hb_it").value.trim(),src:"HB",cr:$("hb_cr").value,
+    sz:$("hb_sz").value,tp:$("hb_tp").value.trim()||"mostruosità",al:$("hb_al").value.trim()||"non allineato",
+    ac:$("hb_ac").value.trim(),hp:$("hb_hp").value.trim(),spd:$("hb_spd").value.trim()||"9 m",
+    ab:Array.from({length:6},(_,i)=>parseInt($("hb_ab"+i).value,10)||10),
+    sen:$("hb_sen").value.trim(),lg:$("hb_lg").value.trim()||"—",
+    env:$("hb_env").value.split(",").map(s=>s.trim().toLowerCase()).filter(Boolean),
+    tr:hbParseLines($("hb_tr").value,"Tratto"),act:hbParseLines($("hb_act").value,"Azione"),
+    rea:hbParseLines($("hb_rea").value,"Reazione"),leg:hbParseLines($("hb_leg").value,"Azione")
+  };
+  ["sv","sk","vul","res","imm","cim"].forEach(k=>{const v=$("hb_"+k).value.trim();if(v)m[k]=v});
+  if(!m.env.length)m.env=["qualsiasi"];
+  if(!m.it)m.it=m.n;
+  if(!m.sen)m.sen="Percezione passiva "+(10+Math.floor((m.ab[4]-10)/2));
+  return m;
+}
+function hbValidate(m){
+  if(!m.n)return"Il nome è obbligatorio.";
+  if(!/^\d+/.test(m.ac))return"La CA deve iniziare con un numero (es. «15 (cuoio)»).";
+  if(!/^\d+/.test(m.hp))return"I PF devono iniziare con un numero (es. «45 (7d8+14)»).";
+  const clash=MONSTERS.findIndex(x=>x.n===m.n);
+  const selfIdx=hbEditIdx>=0?BASE_COUNT+hbEditIdx:-1;
+  if(clash>=0&&clash!==selfIdx)return"Esiste già una creatura con questo nome: usane uno diverso (es. «Goblin (HB)»).";
+  return null;
+}
+function hbSave(){
+  const m=hbRead();const err=hbValidate(m);
+  if(err){$("hbErr").textContent=err;return}
+  const hb=hbAll();
+  if(hbEditIdx>=0)hb[hbEditIdx]=m;else hb.push(m);
+  lsSet("enc_hb",hb);
+  withRemap(loadHB);hbCancel();renderHbList();srcBadge();
+}
+function hbDel(k){
+  if(!confirm("Eliminare questo mostro homebrew?"))return;
+  const hb=hbAll();hb.splice(k,1);lsSet("enc_hb",hb);
+  withRemap(loadHB);renderHbList();
+}
+function hbPreview(){
+  const m=hbRead();const err=hbValidate(m);
+  if(err){$("hbErr").textContent=err;return}
+  $("sbBody").innerHTML=sbHTML(m);$("sbModal").style.display="flex";
+}
+function hbExport(){
+  const blob=new Blob([JSON.stringify(hbAll(),null,2)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="bestiario_homebrew.json";a.click();
+}
+$("hbFile").addEventListener("change",e=>{
+  const f=e.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{try{
+    let arr=JSON.parse(rd.result);if(!Array.isArray(arr))arr=[arr];
+    const hb=hbAll();
+    arr.forEach(m=>{if(m&&m.n&&m.hp&&m.ac&&m.cr){m.src="HB";if(!hb.some(x=>x.n===m.n)&&!MONSTERS.some(x=>x.n===m.n&&x.src!=="HB"))hb.push(m)}});
+    lsSet("enc_hb",hb);withRemap(loadHB);renderHbList();
+  }catch(err){alert("File JSON non valido.")}};
+  rd.readAsText(f);e.target.value="";
+});
 
 /* ================= RENDERING STATBLOCK ================= */
 const AB=["FOR","DES","COS","INT","SAG","CAR"];
@@ -653,14 +830,39 @@ function renderBest(){
   let l=pool().filter(m=>(!q||m.n.toLowerCase().includes(q)||m.it.toLowerCase().includes(q))&&(!cr||m.cr===cr)&&(!tp||m.tp.startsWith(tp))&&(!env||(m.env||[]).includes(env)));
   l.sort((a,b)=>srt==="n"?a.it.localeCompare(b.it):srt==="tp"?a.tp.localeCompare(b.tp)||crVal(a.cr)-crVal(b.cr):crVal(a.cr)-crVal(b.cr)||a.it.localeCompare(b.it));
   $("bestCount").textContent=`${l.length} creature trovate (${pool().length} totali con le fonti attive).`;
-  $("bList").innerHTML="<tr><th>GS</th><th>Creatura</th><th>Tipo</th><th>Taglia</th><th>PF</th><th>CA</th><th>Fonte</th></tr>"+
+  $("bList").innerHTML="<tr><th>GS</th><th>Creatura</th><th>Tipo</th><th>Taglia</th><th>PF</th><th>CA</th><th>Fonte</th><th></th></tr>"+
    l.map(m=>{const i=MONSTERS.indexOf(m);
-    return`<tr class="mrow" onclick="openSb(${i})"><td style="color:var(--gold-l);font-family:var(--font-display)">${m.cr}</td><td><b>${m.it}</b> <span style="color:var(--muted);font-size:.78rem">${m.n}</span></td><td>${m.tp.split(" (")[0]}</td><td>${m.sz}</td><td>${m.hp.split(" ")[0]}</td><td>${m.ac.split(" ")[0]}</td><td class="srcsig">${m.src}</td></tr>`}).join("");
+    return`<tr class="mrow" onclick="openSb(${i})"><td style="color:var(--gold-l);font-family:var(--font-display)">${m.cr}</td><td><b>${m.it}</b> <span style="color:var(--muted);font-size:.78rem">${m.n}</span></td><td>${m.tp.split(" (")[0]}</td><td>${m.sz}</td><td>${m.hp.split(" ")[0]}</td><td>${m.ac.split(" ")[0]}</td><td class="srcsig">${m.src}</td><td><button class="btn small" title="Aggiungi all'incontro" onclick="event.stopPropagation();addToEnc(${i})">➕</button></td></tr>`}).join("");
 }
 
 /* ================= GENERATORE ================= */
 let ENC=[];/* [{i:indexMostro, q:quantità}] */
-function modeUI(){const b=$("gMode").value==="b";$("modeN").style.display=b?"none":"";$("modeB").style.display=b?"":"none"}
+function modeUI(){
+  const v=$("gMode").value;
+  $("modeN").style.display=v==="n"?"":"none";
+  $("modeB").style.display=v==="b"?"":"none";
+  $("modeM").style.display=v==="m"?"":"none";
+  $("genBtn").style.display=v==="m"?"none":"";
+  const rg=$("reGenBtn");if(rg)rg.style.display=v==="m"?"none":"";
+  if(v==="m")renderMList();
+}
+function addToEnc(idx){
+  const row=ENC.find(r=>r.i===idx);
+  if(row)row.q++;else ENC.push({i:idx,q:1});
+  renderEnc();
+}
+function renderMList(){
+  const q=($("mQ").value||"").toLowerCase(),cr=$("mCr").value;
+  let l=gPool().filter(({m})=>(!q||m.n.toLowerCase().includes(q)||m.it.toLowerCase().includes(q))&&(!cr||m.cr===cr));
+  l.sort((a,b)=>crVal(a.m.cr)-crVal(b.m.cr)||a.m.it.localeCompare(b.m.it));
+  const over=l.length>40;if(over)l=l.slice(0,40);
+  $("mList").innerHTML=l.map(({m,idx})=>`<div class="enc-row">
+    <span class="en" onclick="openSb(${idx})">${m.it}</span>
+    <span class="em">GS ${m.cr} · ${XP[m.cr].toLocaleString("it-IT")} XP · ${m.tp.split(" (")[0]} · ${m.src}</span>
+    <span style="margin-left:auto"><button class="btn small gold" onclick="addToEnc(${idx})">➕ Aggiungi</button></span></div>`).join("")
+   +(over?'<p style="color:var(--muted);font-size:.8rem">…altri risultati nascosti: affina la ricerca.</p>':'')
+   ||'<p style="color:var(--muted)">Nessuna creatura corrisponde ai filtri.</p>';
+}
 function selTypes(){return[...document.querySelectorAll("#gTypes .chip.sel")].map(c=>c.dataset.t)}
 function gPool(){
   const env=$("gEnv").value,ts=selTypes();
@@ -791,9 +993,10 @@ function encToTracker(){
   if(!ENC.length)return;
   ENC.forEach(r=>{const m=MONSTERS[r.i];
     for(let k=1;k<=r.q;k++){
+      const hpm=hpFromDice(m);
       TRK.list.push({id:"t"+Date.now()+Math.random().toString(36).slice(2,6),
        name:m.it+(r.q>1?" "+k:""),sub:m.n+" · GS "+m.cr,mi:r.i,pc:false,
-       init:null,ac:parseInt(m.ac,10)||10,hpMax:parseInt(m.hp,10)||10,hp:parseInt(m.hp,10)||10,
+       init:null,ac:parseInt(m.ac,10)||10,hpMax:hpm,hp:hpm,
        dex:Math.floor((m.ab[1]-10)/2),cond:[]});
     }});
   trkSave();showTab("track");renderTrk();
@@ -868,15 +1071,19 @@ function initSelects(){
   $("gEnv").innerHTML='<option value="">Qualsiasi</option>'+envs.map(e=>`<option>${e}</option>`).join("");
   $("gCrMin").innerHTML=crsPresent.map(c=>`<option${c==="1/4"?" selected":""}>${c}</option>`).join("");
   $("gCrMax").innerHTML=crsPresent.map(c=>`<option${c==="1"?" selected":""}>${c}</option>`).join("");
-  $("gTypes").innerHTML=types.map(t=>`<span class="chip" data-t="${t}" onclick="this.classList.toggle('sel')">${t}</span>`).join("");
+  $("mCr").innerHTML='<option value="">Tutti</option>'+crsPresent.map(c=>`<option>${c}</option>`).join("");
+  const selT=selTypes();
+  $("gTypes").innerHTML=types.map(t=>`<span class="chip${selT.includes(t)?" sel":""}" data-t="${t}" onclick="this.classList.toggle('sel');if($('gMode').value==='m')renderMList()">${t}</span>`).join("");
+  if($("gMode").value==="m")renderMList();
 }
 (function(){
   $("pNum").innerHTML=[1,2,3,4,5,6,7,8].map(n=>`<option${n===4?" selected":""}>${n}</option>`).join("");
   $("pLvl").innerHTML=Array.from({length:20},(_,i)=>`<option${i+1===3?" selected":""}>${i+1}</option>`).join("");
   $("gCount").innerHTML=Array.from({length:20},(_,i)=>`<option${i+1===4?" selected":""}>${i+1}</option>`).join("");
   $("gMaxN").innerHTML=Array.from({length:15},(_,i)=>`<option${i+1===6?" selected":""}>${i+1}</option>`).join("");
-  initSelects();renderTh();srcBadge();renderTrk();
+  loadHB();initSelects();renderTh();srcBadge();renderTrk();
 })();
+/* v1.1 — homebrew + incontro manuale */
 </script>
 </body>
 </html>
