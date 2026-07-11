@@ -120,6 +120,9 @@ table.lst tr.mrow:hover{background:#2c2216}
 .tabbar .tab{flex:1; min-width:130px; text-align:center; padding:10px 4px; background:linear-gradient(180deg,#241b11,#1d150c); border:1px solid var(--border); border-radius:8px; font-family:var(--font-display); letter-spacing:.5px; color:var(--muted); cursor:pointer; font-size:.88rem; transition:all .18s}
 .tabbar .tab:hover{border-color:var(--gold); color:var(--gold-l)}
 .tabbar .tab.active{background:linear-gradient(180deg,#a13636,#7a2626); color:#fff; border-color:#c95454}
+.sbroll{cursor:pointer; background:#f6efdd; border:1px solid #c9b88f; border-radius:6px; padding:0 6px; font-size:.72rem; margin-left:5px; color:#7a2020; white-space:nowrap; user-select:none}
+.sbroll:hover{border-color:#8b2e2e; background:#efe5cc}
+#dbar{position:fixed; left:0; right:0; bottom:0; z-index:70; background:linear-gradient(180deg,#2c2013,#191209); border-top:2px solid var(--gold); padding:7px 14px; display:none; align-items:center; gap:7px; flex-wrap:wrap}
 .toolbar{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px}
 @media print{
   body{background:#fff}
@@ -199,6 +202,7 @@ table.lst tr.mrow:hover{background:#2c2216}
         <button class="btn" id="reGenBtn" onclick="genEnc()">🎲 Rigenera</button>
         <button class="btn" onclick="saveEnc()">💾 Salva incontro</button>
         <button class="btn" onclick="exportEnc()">⬇ Esporta JSON</button>
+        <button class="btn" onclick="openTreasure()">💰 Tesoro</button>
         <button class="btn" onclick="ENC=[];renderEnc()">🗑 Svuota</button>
       </div>
     </div>
@@ -237,6 +241,12 @@ table.lst tr.mrow:hover{background:#2c2216}
   </div>
 </main>
 
+<!-- barra dadi (tracker e statblock) -->
+<div id="dbar">
+  <span style="font-family:var(--font-display);color:var(--gold-l);font-size:.78rem">DADI</span>
+  <span class="chip tiny" onclick="rollD(4)">d4</span><span class="chip tiny" onclick="rollD(6)">d6</span><span class="chip tiny" onclick="rollD(8)">d8</span><span class="chip tiny" onclick="rollD(10)">d10</span><span class="chip tiny" onclick="rollD(12)">d12</span><span class="chip tiny" onclick="rollD(20)">d20</span><span class="chip tiny" onclick="rollD(100)">d100</span>
+  <span id="dlog" style="flex:1;text-align:right;font-size:.82rem;min-width:180px;color:var(--ink)"></span>
+</div>
 <!-- modale statblock -->
 <div class="modal" id="sbModal" onclick="if(event.target===this)closeSb()">
   <div class="modal-box sbbox"><div id="sbBody"></div>
@@ -307,10 +317,12 @@ table.lst tr.mrow:hover{background:#2c2216}
 </div>
 <input type="file" id="hbFile" accept=".json" style="display:none">
 <input type="file" id="pcFile" accept=".json" multiple style="display:none">
+<input type="file" id="bkFile" accept=".json" style="display:none">
 <!-- modale incontri salvati -->
 <div class="modal" id="encModal" onclick="if(event.target===this)closeEncSaved()">
   <div class="modal-box"><h2>📂 Incontri salvati</h2><div id="encSavedList"></div>
-   <div class="toolbar"><button class="btn" onclick="closeEncSaved()">Chiudi</button></div></div>
+   <div class="toolbar"><button class="btn" onclick="backupSuite()">🗄 Backup suite</button><button class="btn" onclick="$('bkFile').click()">⬆ Ripristina backup</button><button class="btn" onclick="closeEncSaved()">Chiudi</button></div>
+   <div class="hint" style="color:var(--muted);font-size:.78rem;margin-top:6px">Il backup salva in un unico file tutti i dati della suite presenti in questo browser: personaggi, NPC, incontri, homebrew e tracker.</div></div>
 </div>
 
 <script>
@@ -799,6 +811,27 @@ $("hbFile").addEventListener("change",e=>{
   rd.readAsText(f);e.target.value="";
 });
 
+/* ================= DADI ================= */
+let DLOG=[],TAB="gen";
+function dlog(t){DLOG.unshift(t);DLOG=DLOG.slice(0,5);
+  $("dlog").innerHTML=DLOG.map((x,i)=>i?`<span style="color:#8a7a5a">${x}</span>`:`<b style="color:var(--gold-l)">${x}</b>`).join(" · ")}
+function rollD(n){dlog(`d${n}: <b>${D(n)}</b>`)}
+function rollAtk(label,bonus){const r=D(20);
+  dlog(`${label}: (${r})${bonus>=0?"+":""}${bonus} = <b>${r+bonus}</b>${r===20?" ⭐":r===1?" 💀":""}`)}
+function rollDmgX(label,expr){const m=expr.match(/(\d+)d(\d+)([+-]\d+)?/);if(!m)return;
+  let tot=0,det=[];for(let i=0;i<+m[1];i++){const r=D(+m[2]);tot+=r;det.push(r)}
+  const md=m[3]?parseInt(m[3],10):0;tot+=md;
+  dlog(`${label} (${expr}): [${det.join(",")}]${md?(md>0?"+":"")+md:""} = <b>${tot}</b>`)}
+function dbarVis(){$("dbar").style.display=(TAB==="track"||$("sbModal").style.display==="flex")?"flex":"none"}
+/* pulsanti di tiro estratti dal testo di un'azione */
+function sbBtns(name,txt){
+  const lb=name.replace(/'/g,"\\'").replace(/"/g,"");let b="";
+  const a=txt.match(/([+-]\d+) al colpire/);
+  if(a)b+=`<span class="sbroll" onclick="rollAtk('${lb}',${parseInt(a[1],10)})" title="Tiro per colpire">🎲 ${a[1]}</span>`;
+  [...txt.matchAll(/\((\d+d\d+(?:[+-]\d+)?)\)/g)].slice(0,3).forEach(d=>{
+    b+=`<span class="sbroll" onclick="rollDmgX('${lb}','${d[1]}')" title="Tira ${d[1]}">🎲 ${d[1]}</span>`});
+  return b;
+}
 /* ================= RENDERING STATBLOCK ================= */
 const AB=["FOR","DES","COS","INT","SAG","CAR"];
 const mod=v=>{const x=Math.floor((v-10)/2);return(x>=0?"+":"")+x};
@@ -819,13 +852,13 @@ function sbHTML(m){
    <div class="stat"><b>Linguaggi</b> ${m.lg||"—"}</div>
    <div class="stat"><b>Sfida</b> ${m.cr} (${XP[m.cr].toLocaleString("it-IT")} XP)</div><div class="rule"></div>`;
   (m.tr||[]).forEach(t=>h+=`<div class="tr"><b><i>${t[0]}.</i></b> ${t[1]}</div>`);
-  if(m.act&&m.act.length){h+=`<h5>Azioni</h5>`;m.act.forEach(t=>h+=`<div class="tr"><b><i>${t[0]}.</i></b> ${t[1]}</div>`)}
-  if(m.rea&&m.rea.length){h+=`<h5>Reazioni</h5>`;m.rea.forEach(t=>h+=`<div class="tr"><b><i>${t[0]}.</i></b> ${t[1]}</div>`)}
-  if(m.leg&&m.leg.length){h+=`<h5>Azioni Leggendarie</h5><div class="tr" style="font-size:.8rem;color:#4a3f2e">Può compiere 3 azioni leggendarie, una alla volta, alla fine del turno di un'altra creatura. Le recupera all'inizio del proprio turno.</div>`;m.leg.forEach(t=>h+=`<div class="tr"><b><i>${t[0]}.</i></b> ${t[1]}</div>`)}
+  if(m.act&&m.act.length){h+=`<h5>Azioni</h5>`;m.act.forEach(t=>h+=`<div class="tr"><b><i>${t[0]}.</i></b> ${t[1]} ${sbBtns(t[0],t[1])}</div>`)}
+  if(m.rea&&m.rea.length){h+=`<h5>Reazioni</h5>`;m.rea.forEach(t=>h+=`<div class="tr"><b><i>${t[0]}.</i></b> ${t[1]} ${sbBtns(t[0],t[1])}</div>`)}
+  if(m.leg&&m.leg.length){h+=`<h5>Azioni Leggendarie</h5><div class="tr" style="font-size:.8rem;color:#4a3f2e">Può compiere 3 azioni leggendarie, una alla volta, alla fine del turno di un'altra creatura. Le recupera all'inizio del proprio turno.</div>`;m.leg.forEach(t=>h+=`<div class="tr"><b><i>${t[0]}.</i></b> ${t[1]} ${sbBtns(t[0],t[1])}</div>`)}
   h+=`</div>`;return h;
 }
-function openSb(i){$("sbBody").innerHTML=sbHTML(MONSTERS[i]);$("sbModal").style.display="flex"}
-function closeSb(){$("sbModal").style.display="none"}
+function openSb(i){$("sbBody").innerHTML=sbHTML(MONSTERS[i]);$("sbModal").style.display="flex";dbarVis()}
+function closeSb(){$("sbModal").style.display="none";dbarVis()}
 
 /* ================= BESTIARIO: lista ================= */
 function pool(){return MONSTERS.filter(m=>okSrc(m.src))}
@@ -986,6 +1019,92 @@ function exportEnc(){
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="incontro_dnd5e.json";a.click();
 }
 
+/* ================= TESORI (DMG cap. 7, tabelle semplificate) ================= */
+const T_ITEMS={
+ A:["Potion of Healing","Spell Scroll (trucchetto)","Potion of Climbing","Spell Scroll (1° liv)"],
+ B:["Potion of Greater Healing","Potion of Fire Breath","Potion of Resistance","Ammunition +1 (1d6)","Potion of Water Breathing","Spell Scroll (2° liv)","Potion of Animal Friendship"],
+ C:["Potion of Superior Healing","Spell Scroll (3° liv)","Spell Scroll (4° liv)","Elemental Gem","Potion of Gaseous Form"],
+ D:["Potion of Supreme Healing","Spell Scroll (5° liv)","Potion of Flying","Arrow of Slaying","Oil of Etherealness"],
+ E:["Spell Scroll (8° liv)","Potion of Storm Giant Strength","Sovereign Glue","Universal Solvent","Arrow of Slaying"],
+ F:["Weapon +1","Bag of Holding","Boots of Elvenkind","Cloak of Protection","Wand of Magic Missiles","Gauntlets of Ogre Power","Goggles of Night","Ring of Mind Shielding"],
+ G:["Weapon +2","Armor +1","Ring of Protection","Boots of Speed","Cloak of Displacement","Flame Tongue","Wand of Fireballs","Bracers of Defense"],
+ H:["Weapon +3","Armor +2","Ring of Regeneration","Animated Shield","Amulet of the Planes","Staff of Fire","Ioun Stone (Insight)"],
+ I:["Holy Avenger","Vorpal Sword","Staff of the Magi","Armor +3","Ring of Djinni Summoning","Cloak of Invisibility"]};
+const nd=(n,d,mult)=>{let t=0;for(let i=0;i<n;i++)t+=D(d);return t*(mult||1)};
+const band=cr=>{const v=crVal(cr);return v<=4?0:v<=10?1:v<=16?2:3};
+function indivTreasure(b){
+  const r=D(100),c={mr:0,ma:0,me:0,mo:0,mp:0};
+  if(b===0){if(r<=30)c.mr=nd(5,6);else if(r<=60)c.ma=nd(4,6);else if(r<=70)c.me=nd(3,6);else if(r<=95)c.mo=nd(3,6);else c.mp=nd(1,6)}
+  else if(b===1){if(r<=30){c.mr=nd(4,6,100);c.me=nd(1,6,10)}else if(r<=60){c.ma=nd(6,6,10);c.mo=nd(2,6,10)}else if(r<=70){c.me=nd(3,6,10);c.mo=nd(2,6,10)}else if(r<=95)c.mo=nd(4,6,10);else{c.mo=nd(2,6,10);c.mp=nd(3,6)}}
+  else if(b===2){if(r<=20){c.ma=nd(4,6,100);c.mo=nd(1,6,100)}else if(r<=35){c.me=nd(1,6,100);c.mo=nd(1,6,100)}else if(r<=75){c.mo=nd(2,6,100);c.mp=nd(1,6,10)}else{c.mo=nd(2,6,100);c.mp=nd(2,6,10)}}
+  else{if(r<=15){c.me=nd(2,6,1000);c.mo=nd(8,6,100)}else if(r<=55){c.mo=nd(1,6,1000);c.mp=nd(1,6,100)}else{c.mo=nd(1,6,1000);c.mp=nd(2,6,100)}}
+  return c;
+}
+function pickItems(tbl,n){const out=[];for(let i=0;i<n;i++)out.push(R(T_ITEMS[tbl]));return out}
+function hoardTreasure(b){
+  const h={coins:{},gems:"",items:[]};const r=D(100);
+  if(b===0){h.coins={mr:nd(6,6,100),ma:nd(3,6,100),mo:nd(2,6,10)};
+    if(r>6)h.gems=D(2)===1?`${nd(2,6)} gemme da 10 mo`:`${nd(2,4)} oggetti d'arte da 25 mo`;
+    if(r>36&&r<=60)h.items=pickItems("A",D(6));else if(r>60&&r<=75)h.items=pickItems("B",D(4));
+    else if(r>75&&r<=85)h.items=pickItems("C",D(4));else if(r>85&&r<=97)h.items=pickItems("F",D(4));else if(r>97)h.items=pickItems("G",1);}
+  else if(b===1){h.coins={mr:nd(2,6,100),ma:nd(2,6,1000),mo:nd(6,6,100),mp:nd(3,6,10)};
+    if(r>4)h.gems=D(2)===1?`${nd(3,6)} gemme da 50 mo`:`${nd(2,4)} oggetti d'arte da 250 mo`;
+    if(r>28&&r<=44)h.items=pickItems("A",D(6));else if(r>44&&r<=62)h.items=pickItems("B",D(4));
+    else if(r>62&&r<=74)h.items=pickItems("C",D(4));else if(r>74&&r<=80)h.items=pickItems("D",D(4));
+    else if(r>80&&r<=94)h.items=pickItems("F",D(4));else if(r>94&&r<=98)h.items=pickItems("G",D(4));else if(r>98)h.items=pickItems("H",1);}
+  else if(b===2){h.coins={mo:nd(4,6,1000),mp:nd(5,6,100)};
+    if(r>3)h.gems=D(2)===1?`${nd(2,4)} gemme da 1.000 mo`:`${nd(2,4)} oggetti d'arte da 750 mo`;
+    if(r>10&&r<=30)h.items=pickItems("C",D(4));else if(r>30&&r<=50)h.items=pickItems("D",D(4));
+    else if(r>50&&r<=70)h.items=pickItems("F",D(4)).concat(pickItems("G",D(4)));
+    else if(r>70&&r<=90)h.items=pickItems("H",D(4));else if(r>90)h.items=pickItems("I",1);}
+  else{h.coins={mo:nd(12,6,1000),mp:nd(8,6,1000)};
+    if(r>2)h.gems=D(2)===1?`${nd(3,6)} gemme da 1.000 mo`:`${D(10)} gemme da 5.000 mo`;
+    if(r>2&&r<=30)h.items=pickItems("C",D(8));else if(r>30&&r<=55)h.items=pickItems("D",D(6));
+    else if(r>55&&r<=75)h.items=pickItems("E",D(6));else if(r>75&&r<=90)h.items=pickItems("H",D(4));else h.items=pickItems("I",D(4));}
+  return h;
+}
+const coinTxt=c=>[["mr","mr"],["ma","ma"],["me","me"],["mo","mo"],["mp","mp"]].map(([k,l])=>c[k]?`<b>${c[k].toLocaleString("it-IT")}</b> ${l}`:"").filter(Boolean).join(" · ")||"—";
+function openTreasure(){
+  if(!ENC.length)return;
+  /* monete individuali: una tirata per ogni singolo mostro */
+  const tot={mr:0,ma:0,me:0,mo:0,mp:0};
+  ENC.forEach(r=>{const b=band(MONSTERS[r.i].cr);
+    for(let k=0;k<r.q;k++){const c=indivTreasure(b);for(const key in tot)tot[key]+=c[key]||0}});
+  const maxB=Math.max(...ENC.map(r=>band(MONSTERS[r.i].cr)));
+  const hd=hoardTreasure(maxB);
+  let h=`<div class="mm"><div class="mname">💰 Tesoro dell'incontro</div>
+   <div class="mtype">Tabelle del DMG (cap. 7) — gli oggetti magici indicati sono suggerimenti estratti dalla tabella corrispondente</div><div class="rule"></div>
+   <h5>Tesoro individuale (addosso ai nemici)</h5>
+   <div class="tr">${coinTxt(tot)}</div><div class="rule"></div>
+   <h5>Tesoro accumulato (covo/scorta — facoltativo, banda GS ${["0–4","5–10","11–16","17+"][maxB]})</h5>
+   <div class="tr"><b>Monete:</b> ${coinTxt(hd.coins)}</div>
+   ${hd.gems?`<div class="tr"><b>Gemme e oggetti d'arte:</b> ${hd.gems}</div>`:""}
+   <div class="tr"><b>Oggetti magici:</b> ${hd.items.length?hd.items.join(", "):"nessuno"}</div>
+   <div class="tr" style="font-size:.76rem;color:#6b5636">mr=rame · ma=argento · me=electrum · mo=oro · mp=platino</div>
+   <div style="margin-top:10px"><span class="sbroll" onclick="openTreasure()" style="font-size:.85rem;padding:3px 10px">♻ Ritira tutto</span></div></div>`;
+  $("sbBody").innerHTML=h;$("sbModal").style.display="flex";dbarVis();
+}
+/* ================= BACKUP SUITE ================= */
+const SUITE_KEYS=["dnd5e_chars","dnd5e_draft","dnd5e_lang","dnd5e_npcs","enc_src","enc_saved","enc_trk","enc_hb"];
+function backupSuite(){
+  const data={type:"dnd5e_suite_backup",date:new Date().toISOString(),store:{}};
+  let n=0;SUITE_KEYS.forEach(k=>{try{const v=localStorage.getItem(k);if(v!=null){data.store[k]=v;n++}}catch(e){}});
+  if(!n){alert("Nulla da salvare.");return}
+  const blob=new Blob([JSON.stringify(data)],{type:"application/json"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download="dnd5e_suite_backup_"+new Date().toISOString().slice(0,10)+".json";a.click();
+}
+function restoreSuite(file){
+  const rd=new FileReader();
+  rd.onload=()=>{try{
+    const d=JSON.parse(rd.result);
+    if(d.type!=="dnd5e_suite_backup"||!d.store)throw 0;
+    if(!confirm("Ripristinare il backup? I dati attuali di questo browser verranno sovrascritti."))return;
+    for(const k in d.store)localStorage.setItem(k,d.store[k]);
+    alert("✅ Backup ripristinato. La pagina verrà ricaricata.");location.reload();
+  }catch(err){alert("File di backup non valido.")}};
+  rd.readAsText(file);
+}
 /* ================= TRACKER ================= */
 let TRK=lsGet("enc_trk",{list:[],turn:-1,round:0});
 const CONDS=["Prono","Afferrato","Trattenuto","Accecato","Assordato","Avvelenato","Spaventato","Affascinato","Stordito","Paralizzato","Incapacitato","Invisibile","Pietrificato","Conc."];
@@ -1038,6 +1157,7 @@ function importPc(obj){
     addPcRow({name:obj.name,race:obj.race,cls:obj.cls,ac,hpM:hp,init:0});return 1}
   return 0;
 }
+$("bkFile").addEventListener("change",e=>{const f=e.target.files[0];if(f)restoreSuite(f);e.target.value=""});
 $("pcFile").addEventListener("change",e=>{
   const files=[...e.target.files];if(!files.length)return;
   let done=0,pending=files.length;
@@ -1100,10 +1220,12 @@ function renderTrk(){
 
 /* ================= TABS & INIT ================= */
 function showTab(t){
+  TAB=t;
   ["gen","best","track"].forEach(x=>{
     $("view-"+x).style.display=x===t?"":"none";
     $("tab-"+x).classList.toggle("active",x===t)});
   if(t==="best")renderBest();if(t==="track")renderTrk();
+  dbarVis();
 }
 function initSelects(){
   const crsPresent=CRS.filter(c=>pool().some(m=>m.cr===c));
