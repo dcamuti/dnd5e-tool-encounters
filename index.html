@@ -223,12 +223,13 @@ table.lst tr.mrow:hover{background:#2c2216}
   <div id="view-track" style="display:none">
     <div class="panel">
       <h2>🗡 Tracker di combattimento <span id="roundLbl" style="font-size:.85rem;color:var(--muted)"></span></h2>
-      <div class="hint">Clicca il nome di un mostro per consultarne il blocco statistiche. PF modificabili al volo; a 0 pf la riga si spegne.</div>
+      <div class="hint">Clicca il nome di un mostro per consultarne il blocco statistiche. PF modificabili al volo; a 0 pf la riga si spegne. <b>Importa party</b> legge i JSON del generatore schede: il file «party» (👥 Party → Esporta party per il tracker) o i singoli personaggi esportati.</div>
       <div class="toolbar" style="margin:0 0 14px">
         <button class="btn gold" onclick="nextTurn()">▶ Prossimo turno</button>
         <button class="btn" onclick="rollInit()">🎲 Iniziativa mostri</button>
         <button class="btn" onclick="sortInit()">⇅ Ordina</button>
         <button class="btn" onclick="addPc()">➕ Aggiungi PG</button>
+        <button class="btn gold" onclick="$('pcFile').click()">⬆ Importa party</button>
         <button class="btn" onclick="clearTrk()">🗑 Svuota</button>
       </div>
       <div id="trkRows"></div>
@@ -305,6 +306,7 @@ table.lst tr.mrow:hover{background:#2c2216}
   </div>
 </div>
 <input type="file" id="hbFile" accept=".json" style="display:none">
+<input type="file" id="pcFile" accept=".json" multiple style="display:none">
 <!-- modale incontri salvati -->
 <div class="modal" id="encModal" onclick="if(event.target===this)closeEncSaved()">
   <div class="modal-box"><h2>📂 Incontri salvati</h2><div id="encSavedList"></div>
@@ -318,6 +320,8 @@ const R=a=>a[Math.floor(Math.random()*a.length)];
 const D=n=>Math.floor(Math.random()*n)+1;
 function lsGet(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+/* conserva la posizione di scorrimento durante i re-render */
+function ks(){const y=window.scrollY;requestAnimationFrame(()=>window.scrollTo(0,y))}
 
 /* ================= FONTI ================= */
 const SOURCES=[["MM","Monster Manual",1],["VGtM","Volo's Guide to Monsters"],["MToF","Mordenkainen's Tome of Foes"],["MPMM","Monsters of the Multiverse"],["HB","Homebrew (contenuti personalizzati)"]];
@@ -826,6 +830,7 @@ function closeSb(){$("sbModal").style.display="none"}
 /* ================= BESTIARIO: lista ================= */
 function pool(){return MONSTERS.filter(m=>okSrc(m.src))}
 function renderBest(){
+  ks();
   const q=$("bQ").value.toLowerCase(),cr=$("bCr").value,tp=$("bType").value,env=$("bEnv").value,srt=$("bSort").value;
   let l=pool().filter(m=>(!q||m.n.toLowerCase().includes(q)||m.it.toLowerCase().includes(q))&&(!cr||m.cr===cr)&&(!tp||m.tp.startsWith(tp))&&(!env||(m.env||[]).includes(env)));
   l.sort((a,b)=>srt==="n"?a.it.localeCompare(b.it):srt==="tp"?a.tp.localeCompare(b.tp)||crVal(a.cr)-crVal(b.cr):crVal(a.cr)-crVal(b.cr)||a.it.localeCompare(b.it));
@@ -852,6 +857,7 @@ function addToEnc(idx){
   renderEnc();
 }
 function renderMList(){
+  ks();
   const q=($("mQ").value||"").toLowerCase(),cr=$("mCr").value;
   let l=gPool().filter(({m})=>(!q||m.n.toLowerCase().includes(q)||m.it.toLowerCase().includes(q))&&(!cr||m.cr===cr));
   l.sort((a,b)=>crVal(a.m.cr)-crVal(b.m.cr)||a.m.it.localeCompare(b.m.it));
@@ -929,6 +935,7 @@ function encTotals(){
   return{nTot,raw,adj:Math.round(raw*encMult(nTot))};
 }
 function renderEnc(){
+  ks();
   if(!ENC.length){$("encPanel").style.display="none";return}
   $("encPanel").style.display="";
   $("encRows").innerHTML=ENC.map((r,k)=>{const m=MONSTERS[r.i];
@@ -1007,6 +1014,42 @@ function addPc(){
   TRK.list.push({id:"t"+Date.now(),name,sub:"Personaggio giocante",mi:-1,pc:true,init,ac:null,hpMax:null,hp:null,dex:0,cond:[]});
   sortInit();
 }
+/* ---- import party dal generatore schede ---- */
+function addPcRow(p){
+  const name=p.name||"PG";
+  /* se già presente (stesso nome), aggiorna invece di duplicare */
+  const ex=TRK.list.find(u=>u.pc&&u.name===name);
+  const hpM=parseInt(p.hpM,10)||null;
+  const hpC=(p.hpC!=null&&!isNaN(parseInt(p.hpC,10)))?parseInt(p.hpC,10):hpM;
+  const row={id:ex?ex.id:"t"+Date.now()+Math.random().toString(36).slice(2,6),
+   name,sub:[p.race,p.cls].filter(Boolean).join(" · ")||"Personaggio giocante",
+   mi:-1,pc:true,init:ex?ex.init:null,
+   ac:parseInt(p.ac,10)||null,hpMax:hpM,hp:hpC,
+   dex:parseInt(p.init,10)||0,cond:ex?ex.cond:[]};
+  if(ex)Object.assign(ex,row);else TRK.list.push(row);
+}
+function importPc(obj){
+  if(obj&&obj.type==="dnd5e_party"&&Array.isArray(obj.pcs)){obj.pcs.forEach(addPcRow);return obj.pcs.length}
+  if(obj&&obj._stats&&obj._stats.name){addPcRow(obj._stats);return 1}
+  if(obj&&obj.name&&(obj.race||obj.cls)){
+    /* personaggio esportato con una versione precedente: chiedi i dati mancanti */
+    const ac=parseInt(prompt(`CA di ${obj.name}?`,"14"),10)||14;
+    const hp=parseInt(prompt(`PF massimi di ${obj.name}?`,"20"),10)||20;
+    addPcRow({name:obj.name,race:obj.race,cls:obj.cls,ac,hpM:hp,init:0});return 1}
+  return 0;
+}
+$("pcFile").addEventListener("change",e=>{
+  const files=[...e.target.files];if(!files.length)return;
+  let done=0,pending=files.length;
+  files.forEach(f=>{const rd=new FileReader();
+    rd.onload=()=>{try{done+=importPc(JSON.parse(rd.result))}catch(err){}
+      if(--pending===0){
+        if(done){trkSave();sortInit();showTab("track");renderTrk()}
+        else alert("Nessun personaggio riconosciuto nel file. Usa l'export del generatore schede (party o singolo PG).");
+      }};
+    rd.readAsText(f)});
+  e.target.value="";
+});
 function rollInit(){
   TRK.list.forEach(u=>{if(!u.pc)u.init=D(20)+u.dex});
   sortInit();
@@ -1039,6 +1082,7 @@ function toggleCond(id,c){
 function rmU(id){TRK.list=TRK.list.filter(x=>x.id!==id);trkSave();renderTrk()}
 function clearTrk(){if(!confirm("Svuotare il tracker?"))return;TRK={list:[],turn:-1,round:0};trkSave();renderTrk()}
 function renderTrk(){
+  ks();
   $("roundLbl").textContent=TRK.round>0?`— Round ${TRK.round}`:"";
   $("trkRows").innerHTML=TRK.list.length?TRK.list.map((u,i)=>{
     const dead=!u.pc&&u.hp<=0;
