@@ -143,6 +143,8 @@ table.lst tr.mrow:hover{background:#2c2216}
 .fx-chip{display:inline-block;background:linear-gradient(180deg,#2c2216,#241b10);border:1px solid var(--gold);border-radius:16px;padding:4px 12px;font-size:.8rem;margin:0 6px 6px 0;color:var(--gold-l)}
 .fx-chip .fx-x{cursor:pointer;color:var(--muted);margin-left:6px}
 .fx-chip .fx-x:hover{color:#e07a7a}
+#toastBox{position:fixed; left:50%; transform:translateX(-50%); bottom:58px; z-index:90; background:linear-gradient(180deg,#3d2f1b,#2e2312); border:1px solid var(--gold); color:var(--gold-l); padding:9px 22px; border-radius:24px; font-family:var(--font-display); font-size:.85rem; opacity:0; pointer-events:none; transition:opacity .25s; box-shadow:0 6px 20px rgba(0,0,0,.5)}
+#toastBox.show{opacity:1}
 @media(max-width:760px){.trk-row{grid-template-columns:44px 1fr 60px; grid-auto-rows:auto}.thresholds{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
@@ -921,13 +923,15 @@ function renderSbModal(){
     <span class="chip tiny ${SBV===0?"sel":""}" onclick="SBV=0;renderSbModal()">Normale</span>
     <span class="chip tiny ${SBV===1?"sel":""}" onclick="SBV=1;renderSbModal()">⬆ Élite</span>
     <span class="chip tiny ${SBV===-1?"sel":""}" onclick="SBV=-1;renderSbModal()">⬇ Indebolita</span>
-    <button class="btn small gold" onclick="addToEncV()">➕ All'incontro</button></div>`;
+    <button class="btn small gold" onclick="addToEncV()">➕ All'incontro</button>
+    <button class="btn small" onclick="addToTrk(SBI,SBV)">🗡 Al tracker</button></div>`;
   $("sbBody").innerHTML=bar+sbHTML(variantOf(MONSTERS[SBI],SBV));
 }
 function addToEncV(){
   const row=ENC.find(r=>r.i===SBI&&(r.v||0)===SBV);
   if(row)row.q++;else ENC.push({i:SBI,q:1,v:SBV||undefined});
-  renderEnc();dlog(`➕ ${MONSTERS[SBI].it}${SBV?(SBV>0?" (élite)":" (indebolita)"):""} aggiunto all'incontro`);
+  renderEnc();
+  toast(`➕ ${MONSTERS[SBI].it}${SBV?(SBV>0?" (élite)":" (indebolita)"):""} aggiunto all'incontro — scheda «Incontro»`);
 }
 function openSb(i){SBI=i;SBV=0;renderSbModal();$("sbModal").style.display="flex";dbarVis()}
 function closeSb(){$("sbModal").style.display="none";dbarVis()}
@@ -942,7 +946,7 @@ function renderBest(){
   $("bestCount").textContent=`${l.length} creature trovate (${pool().length} totali con le fonti attive).`;
   $("bList").innerHTML="<tr><th>GS</th><th>Creatura</th><th>Tipo</th><th>Taglia</th><th>PF</th><th>CA</th><th>Fonte</th><th></th></tr>"+
    l.map(m=>{const i=MONSTERS.indexOf(m);
-    return`<tr class="mrow" onclick="openSb(${i})"><td style="color:var(--gold-l);font-family:var(--font-display)">${m.cr}</td><td><b>${m.it}</b> <span style="color:var(--muted);font-size:.78rem">${m.n}</span></td><td>${m.tp.split(" (")[0]}</td><td>${m.sz}</td><td>${m.hp.split(" ")[0]}</td><td>${m.ac.split(" ")[0]}</td><td class="srcsig">${m.src}</td><td><button class="btn small" title="Aggiungi all'incontro" onclick="event.stopPropagation();addToEnc(${i})">➕</button></td></tr>`}).join("");
+    return`<tr class="mrow" onclick="openSb(${i})"><td style="color:var(--gold-l);font-family:var(--font-display)">${m.cr}</td><td><b>${m.it}</b> <span style="color:var(--muted);font-size:.78rem">${m.n}</span></td><td>${m.tp.split(" (")[0]}</td><td>${m.sz}</td><td>${m.hp.split(" ")[0]}</td><td>${m.ac.split(" ")[0]}</td><td class="srcsig">${m.src}</td><td style="white-space:nowrap"><button class="btn small" title="Aggiungi all'incontro (scheda Incontro)" onclick="event.stopPropagation();addToEnc(${i})">➕</button> <button class="btn small" title="Manda subito al tracker di combattimento" onclick="event.stopPropagation();addToTrk(${i})">🗡</button></td></tr>`}).join("");
 }
 
 /* ================= GENERATORE ================= */
@@ -956,10 +960,28 @@ function modeUI(){
   const rg=$("reGenBtn");if(rg)rg.style.display=v==="m"?"none":"";
   if(v==="m")renderMList();
 }
+function toast(msg){
+  let t=$("toastBox");
+  if(!t){t=document.createElement("div");t.id="toastBox";document.body.appendChild(t)}
+  t.textContent=msg;t.className="show";
+  clearTimeout(toast._t);toast._t=setTimeout(()=>t.className="",2400);
+}
 function addToEnc(idx){
-  const row=ENC.find(r=>r.i===idx);
+  const row=ENC.find(r=>r.i===idx&&!r.v);
   if(row)row.q++;else ENC.push({i:idx,q:1});
   renderEnc();
+  toast(`➕ ${MONSTERS[idx].it} aggiunto all'incontro (${ENC.reduce((s,r)=>s+r.q,0)} nemici) — scheda «Incontro»`);
+}
+function addToTrk(idx,v){
+  const m=variantOf(MONSTERS[idx],v||0);
+  const hpm=hpFromDice(m);
+  const count=TRK.list.filter(u=>u.mi===idx).length;
+  TRK.list.push({id:"t"+Date.now()+Math.random().toString(36).slice(2,6),
+   name:m.it+(count?" "+(count+1):""),sub:MONSTERS[idx].n+" · GS "+m.cr,mi:idx,pc:false,
+   init:null,ac:parseInt(m.ac,10)||10,hpMax:hpm,hp:hpm,
+   dex:Math.floor((m.ab[1]-10)/2),cond:[]});
+  trkSave();if(TAB==="track")renderTrk();
+  toast(`🗡 ${m.it} aggiunto al tracker (${TRK.list.filter(u=>!u.pc).length} nemici)`);
 }
 function renderMList(){
   ks();
