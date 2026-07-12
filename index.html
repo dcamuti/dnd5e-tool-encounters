@@ -268,6 +268,7 @@ table.lst tr.mrow:hover{background:#2c2216}
         <button class="btn" onclick="addPc()">➕ Aggiungi PG</button>
         <button class="btn" onclick="$('pcFile').click()">⬆ Importa party</button>
         <button class="btn" id="lairBtn" onclick="toggleLair()">🏰 Tana</button>
+        <button class="btn" onclick="openPV()" title="Finestra da proiettare ai giocatori: iniziativa e condizioni, senza PF e statistiche dei mostri">📺 Vista giocatore</button>
         <span class="sep"></span>
         <button class="btn gold" onclick="endCombat()">🏁 Concludi combattimento</button>
         <button class="btn" onclick="clearTrk()">🗑 Svuota</button>
@@ -1220,6 +1221,43 @@ function areaApply(){
   AREA={on:false,sel:{},half:{}};$("areaPanel").style.display="none";$("areaBtn").classList.remove("on");
   trkSave();renderTrk();
 }
+/* vista giocatore (popup proiettabile) */
+let PV=null;
+const pvEsc=s=>(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;");
+function openPV(){
+  PV=window.open("","dnd5epv","width=920,height=640");
+  if(!PV){alert("Popup bloccato dal browser: consenti i popup per questa pagina.");return}
+  pvRender();
+}
+function pvRender(){
+  if(!PV||PV.closed)return;
+  const rows=TRK.list.map((u,i)=>{
+    const dead=!u.pc&&u.hp<=0;
+    return`<div class="r ${i===TRK.turn?"on":""} ${dead?"dead":""}">
+      <span class="ini">${u.init??"—"}</span>
+      <span class="nm">${i===TRK.turn?"▶ ":""}${dead?"☠ ":""}${pvEsc(u.name)}</span>
+      <span class="cd">${(u.cond||[]).map(c=>`<span class="ch">${c}</span>`).join("")}</span>
+    </div>`}).join("");
+  PV.document.open();
+  PV.document.write(`<!DOCTYPE html><html lang="it"><head><meta charset="utf-8"><title>Iniziativa</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&display=swap');
+body{background:#16100b;color:#ece2d0;font-family:Georgia,serif;margin:0;padding:26px 34px}
+h1{font-family:'Cinzel',Georgia,serif;color:#eccb62;letter-spacing:3px;font-size:1.6rem;margin:0 0 4px;border-bottom:2px solid #c9a227;padding-bottom:10px}
+h1 small{font-size:.85rem;color:#a89878;letter-spacing:2px;float:right;margin-top:8px}
+.r{display:flex;align-items:center;gap:18px;padding:12px 16px;margin:8px 0;background:linear-gradient(160deg,#2a2013,#231a0e);border:1px solid #4a3826;border-radius:12px;font-size:1.35rem}
+.r.on{border-color:#eccb62;background:linear-gradient(160deg,#3d2f1b,#2e2312);box-shadow:0 0 0 1px #eccb62,0 0 18px rgba(201,162,39,.25)}
+.r.dead{opacity:.35}.r.dead .nm{text-decoration:line-through}
+.ini{font-family:'Cinzel',Georgia,serif;font-size:1.5rem;color:#eccb62;min-width:54px;text-align:center;background:#171008;border:1px solid #4a3826;border-radius:10px;padding:4px 0}
+.nm{font-family:'Cinzel',Georgia,serif;flex:1}
+.cd .ch{display:inline-block;background:#7a2626;color:#fff;border-radius:14px;padding:3px 12px;font-size:.85rem;margin-left:6px}
+.empty{color:#a89878;font-size:1.1rem;margin-top:30px;text-align:center}
+</style></head><body>
+<h1>⚔ Iniziativa <small>${TRK.round>0?"ROUND "+TRK.round:"in preparazione"}</small></h1>
+${rows||'<div class="empty">Il combattimento sta per iniziare…</div>'}
+</body></html>`);
+  PV.document.close();
+}
 /* concludi combattimento → riepilogo nel diario di campagna */
 function endCombat(){
   if(!TRK.list.length){alert("Il tracker è vuoto.");return}
@@ -1241,6 +1279,14 @@ function endCombat(){
   ["sessions","npcs","places","hooks"].forEach(k=>{if(!Array.isArray(DIA[k]))DIA[k]=[]});
   if(DIA.sessions.length)DIA.sessions[0].text=(DIA.sessions[0].text?DIA.sessions[0].text+"\n\n":"")+txt;
   else DIA.sessions.unshift({id:Date.now().toString(36),date:new Date().toISOString().slice(0,10),title:"Sessione 1",text:txt});
+  /* registro XP del diario: quota a testa */
+  const per=pcs.length?Math.floor(xp/pcs.length):0;
+  if(per>0){
+    if(!DIA.xp||typeof DIA.xp.total!=="number")DIA.xp={total:0,log:[]};
+    DIA.xp.total+=per;
+    DIA.xp.log.unshift({id:Date.now().toString(36),date:new Date().toISOString().slice(0,10),amount:per,note:"Combattimento: "+(dead.length?grp(dead):"—")});
+    DIA.xp.log=DIA.xp.log.slice(0,50);
+  }
   lsSet("dnd5e_diary",DIA);
   dlog("🏁 Riepilogo salvato nel diario");
   if(confirm("Riepilogo salvato nel diario. Svuotare il tracker?")){snap();TRK={list:[],turn:-1,round:0,fx:[]};trkSave();renderTrk()}
@@ -1377,6 +1423,7 @@ function renderTrk(){
      <span>${CONDS.map(c=>`<span class="chip tiny ${u.cond.includes(c)?"sel":""}" onclick="toggleCond('${u.id}','${c}')">${c}</span>`).join("")}</span>
      <span class="xbtn" onclick="rmU('${u.id}')">✕</span></div>`}).join("")
    :'<p style="color:var(--muted)">Il tracker è vuoto. Genera un incontro e usa «Invia al tracker», oppure aggiungi i PG.</p>';
+  if(PV&&!PV.closed)pvRender();
 }
 
 /* ================= TABS & INIT ================= */
