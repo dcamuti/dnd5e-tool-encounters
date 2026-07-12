@@ -128,7 +128,9 @@ table.lst tr.mrow:hover{background:#2c2216}
 .suite-nav a{background:linear-gradient(180deg,#2c2216,#241b10); border:1px solid var(--border); border-radius:20px; padding:5px 14px; font-size:.8rem; color:var(--ink); text-decoration:none; font-family:var(--font-display); transition:all .15s}
 .suite-nav a:hover{border-color:var(--gold); color:var(--gold-l)}
 .suite-nav a.on{background:linear-gradient(180deg,#a13636,#7a2626); border-color:#c95454; color:#fff; pointer-events:none}
-.toolbar{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px}
+.toolbar{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center}
+.sep{display:inline-block; vertical-align:middle; width:1px; height:24px; background:var(--border); margin:0 4px; flex:none}
+.tb-lbl{font-family:var(--font-display); font-size:.6rem; letter-spacing:1.5px; color:var(--muted); margin-right:2px; min-width:110px}
 #printArea{display:none}
 @media print{
   body{background:#fff}
@@ -219,10 +221,13 @@ table.lst tr.mrow:hover{background:#2c2216}
       <div class="toolbar">
         <button class="btn gold" onclick="encToTracker()">🗡 Invia al tracker</button>
         <button class="btn" id="reGenBtn" onclick="genEnc()">🎲 Rigenera</button>
-        <button class="btn" onclick="saveEnc()">💾 Salva incontro</button>
-        <button class="btn" onclick="exportEnc()">⬇ Esporta JSON</button>
+        <span class="sep"></span>
         <button class="btn" onclick="openTreasure()">💰 Tesoro</button>
         <button class="btn" onclick="printEnc()">🖨 Stampa statblock</button>
+        <span class="sep"></span>
+        <button class="btn" onclick="saveEnc()">💾 Salva incontro</button>
+        <button class="btn" onclick="exportEnc()">⬇ Esporta JSON</button>
+        <span class="sep"></span>
         <button class="btn" onclick="ENC=[];renderEnc()">🗑 Svuota</button>
       </div>
     </div>
@@ -248,16 +253,23 @@ table.lst tr.mrow:hover{background:#2c2216}
     <div class="panel">
       <h2>🗡 Tracker di combattimento <span id="roundLbl" style="font-size:.85rem;color:var(--muted)"></span></h2>
       <div class="hint">Clicca il nome di un mostro per consultarne il blocco statistiche. PF modificabili al volo; a 0 pf la riga si spegne. <b>Importa party</b> legge i JSON del generatore schede: il file «party» (👥 Party → Esporta party per il tracker) o i singoli personaggi esportati.</div>
-      <div class="toolbar" style="margin:0 0 14px">
+      <div class="toolbar" style="margin:0 0 8px">
+        <span class="tb-lbl">COMBATTIMENTO</span>
         <button class="btn gold" onclick="nextTurn()">▶ Prossimo turno</button>
         <button class="btn" onclick="rollInit()">🎲 Iniziativa mostri</button>
         <button class="btn" onclick="sortInit()">⇅ Ordina</button>
-        <button class="btn" onclick="addPc()">➕ Aggiungi PG</button>
-        <button class="btn gold" onclick="$('pcFile').click()">⬆ Importa party</button>
+        <span class="sep"></span>
         <button class="btn" onclick="addFx()">✨ Effetto</button>
         <button class="btn" id="areaBtn" onclick="toggleArea()">💥 Danni ad area</button>
         <button class="btn" onclick="undoTrk()">↩ Annulla</button>
+      </div>
+      <div class="toolbar" style="margin:0 0 14px">
+        <span class="tb-lbl">GESTIONE</span>
+        <button class="btn" onclick="addPc()">➕ Aggiungi PG</button>
+        <button class="btn" onclick="$('pcFile').click()">⬆ Importa party</button>
         <button class="btn" id="lairBtn" onclick="toggleLair()">🏰 Tana</button>
+        <span class="sep"></span>
+        <button class="btn gold" onclick="endCombat()">🏁 Concludi combattimento</button>
         <button class="btn" onclick="clearTrk()">🗑 Svuota</button>
       </div>
       <div id="fxRows" style="margin-bottom:8px"></div>
@@ -1207,6 +1219,31 @@ function areaApply(){
   dlog(`💥 Area (${dm}): ${parts.join(", ")}`);
   AREA={on:false,sel:{},half:{}};$("areaPanel").style.display="none";$("areaBtn").classList.remove("on");
   trkSave();renderTrk();
+}
+/* concludi combattimento → riepilogo nel diario di campagna */
+function endCombat(){
+  if(!TRK.list.length){alert("Il tracker è vuoto.");return}
+  const mons=TRK.list.filter(u=>!u.pc);
+  const vMult=n=>n.includes("(élite)")?1.5:n.includes("(indebolita)")?0.5:1;
+  const xpOf=u=>u.mi>=0&&MONSTERS[u.mi]?Math.round(XP[MONSTERS[u.mi].cr]*vMult(u.name)):0;
+  const dead=mons.filter(u=>u.hp<=0),alive=mons.filter(u=>u.hp>0);
+  const xp=dead.reduce((s,u)=>s+xpOf(u),0);
+  const pcs=TRK.list.filter(u=>u.pc);
+  const down=pcs.filter(u=>u.hpMax!=null&&u.hp===0).map(u=>u.name);
+  const grp=arr=>{const g={};arr.forEach(u=>{const k=u.name.replace(/ \d+$/,"");g[k]=(g[k]||0)+1});
+    return Object.entries(g).map(([n,q])=>q>1?q+"× "+n:n).join(", ")};
+  let txt=`— ⚔ Combattimento concluso (${new Date().toLocaleDateString("it-IT")}${TRK.round?", "+TRK.round+" round":""}) —`;
+  txt+=`\nSconfitti: ${dead.length?grp(dead):"nessuno"}${xp?` · ${xp.toLocaleString("it-IT")} XP${pcs.length?` (${Math.floor(xp/pcs.length).toLocaleString("it-IT")} a testa per ${pcs.length} PG)`:""}`:""}`;
+  if(alive.length)txt+=`\nSopravvissuti/fuggiti: ${grp(alive)}`;
+  if(down.length)txt+=`\nPG a terra: ${down.join(", ")}`;
+  if(!confirm("Aggiungere questo riepilogo al Diario di Campagna?\n\n"+txt))return;
+  const DIA=lsGet("dnd5e_diary",{sessions:[],npcs:[],places:[],hooks:[]});
+  ["sessions","npcs","places","hooks"].forEach(k=>{if(!Array.isArray(DIA[k]))DIA[k]=[]});
+  if(DIA.sessions.length)DIA.sessions[0].text=(DIA.sessions[0].text?DIA.sessions[0].text+"\n\n":"")+txt;
+  else DIA.sessions.unshift({id:Date.now().toString(36),date:new Date().toISOString().slice(0,10),title:"Sessione 1",text:txt});
+  lsSet("dnd5e_diary",DIA);
+  dlog("🏁 Riepilogo salvato nel diario");
+  if(confirm("Riepilogo salvato nel diario. Svuotare il tracker?")){snap();TRK={list:[],turn:-1,round:0,fx:[]};trkSave();renderTrk()}
 }
 /* stampa statblock dell'incontro */
 function printEnc(){
