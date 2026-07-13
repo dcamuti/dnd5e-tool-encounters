@@ -275,6 +275,11 @@ table.lst tr.mrow:hover{background:#2c2216}
         <button class="btn gold" onclick="endCombat()">🏁 Concludi combattimento</button>
         <button class="btn" onclick="clearTrk()">🗑 Svuota</button>
       </div>
+      <div class="toolbar" style="margin:0 0 8px">
+        <span class="tb-lbl">RINFORZI</span>
+        <input type="text" id="rQ" placeholder="cerca una creatura da aggiungere…" oninput="renderRList()" style="width:240px">
+      </div>
+      <div id="rList" style="margin-bottom:10px"></div>
       <div id="fxRows" style="margin-bottom:8px"></div>
       <div id="areaPanel" style="display:none;background:linear-gradient(160deg,#3a2a1b,#2e2213);border:1px solid #c97a27;border-radius:9px;padding:10px 12px;margin-bottom:10px">
         <span style="font-family:var(--font-display);color:#e0a76a;font-size:.8rem">💥 DANNI AD AREA</span>
@@ -778,6 +783,16 @@ function renderHbList(){
   :'<p style="color:var(--muted);margin-bottom:10px">Nessun mostro homebrew. Creane uno!</p>';
 }
 function hbNew(){hbEditIdx=-1;hbFill(null);$("hbForm").style.display="";$("hbListBar").style.display="none"}
+function hbFromMonster(){
+  const base=variantOf(MONSTERS[SBI],SBV);
+  const c=JSON.parse(JSON.stringify(base));
+  c.n=MONSTERS[SBI].n+" (HB)";
+  c.it=base.it.replace(/ \((élite|indebolita)\)$/,"")+" (HB)";
+  c.src="HB";
+  closeSb();
+  openHb();hbEditIdx=-1;hbFill(c);
+  $("hbForm").style.display="";$("hbListBar").style.display="none";
+}
 function hbEdit(k){hbEditIdx=k;hbFill(hbAll()[k]);$("hbForm").style.display="";$("hbListBar").style.display="none"}
 function hbCancel(){$("hbForm").style.display="none";$("hbListBar").style.display="";$("hbErr").textContent=""}
 const hbLines=arr=>(arr||[]).map(t=>t[0]+" | "+t[1]).join("\n");
@@ -924,7 +939,8 @@ function renderSbModal(){
     <span class="chip tiny ${SBV===1?"sel":""}" onclick="SBV=1;renderSbModal()">⬆ Élite</span>
     <span class="chip tiny ${SBV===-1?"sel":""}" onclick="SBV=-1;renderSbModal()">⬇ Indebolita</span>
     <button class="btn small gold" onclick="addToEncV()">➕ All'incontro</button>
-    <button class="btn small" onclick="addToTrk(SBI,SBV)">🗡 Al tracker</button></div>`;
+    <button class="btn small" onclick="addToTrk(SBI,SBV)">🗡 Al tracker</button>
+    <button class="btn small" onclick="hbFromMonster()" title="Apri l'editor Homebrew precompilato con questo statblock">🛠 Duplica in HB</button></div>`;
   $("sbBody").innerHTML=bar+sbHTML(variantOf(MONSTERS[SBI],SBV));
 }
 function addToEncV(){
@@ -1204,6 +1220,21 @@ function restoreSuite(file){
 let TRK=lsGet("enc_trk",{list:[],turn:-1,round:0});
 if(!TRK.fx)TRK.fx=[];
 const CONDS=["Prono","Afferrato","Trattenuto","Accecato","Assordato","Avvelenato","Spaventato","Affascinato","Stordito","Paralizzato","Incapacitato","Invisibile","Pietrificato","Conc."];
+const COND_DESC={
+ "Prono":"Svantaggio ai suoi attacchi. Attacchi in mischia contro di lui con vantaggio, a distanza con svantaggio. Rialzarsi costa metà movimento.",
+ "Afferrato":"Velocità 0. Termina se l'afferrante è incapacitato o se viene allontanato dalla portata.",
+ "Trattenuto":"Velocità 0. Attacchi contro di lui con vantaggio, i suoi con svantaggio. Svantaggio ai TS su Destrezza.",
+ "Accecato":"Fallisce le prove basate sulla vista. Attacchi contro di lui con vantaggio, i suoi con svantaggio.",
+ "Assordato":"Fallisce le prove di caratteristica basate sull'udito.",
+ "Avvelenato":"Svantaggio ai tiri per colpire e alle prove di caratteristica.",
+ "Spaventato":"Svantaggio a prove e attacchi finché vede la fonte della paura. Non può avvicinarsi volontariamente ad essa.",
+ "Affascinato":"Non può attaccare chi lo ha affascinato, che ha vantaggio alle prove sociali contro di lui.",
+ "Stordito":"Incapacitato, non può muoversi, parla a fatica. Fallisce i TS su Forza e Destrezza. Attacchi contro di lui con vantaggio.",
+ "Paralizzato":"Incapacitato, non può muoversi né parlare. Fallisce i TS su Forza e Destrezza. Attacchi contro con vantaggio; i colpi in mischia entro 1,5 m sono critici.",
+ "Incapacitato":"Non può compiere azioni né reazioni.",
+ "Invisibile":"Attacca con vantaggio; gli attacchi contro di lui hanno svantaggio. Individuabile con rumori e tracce.",
+ "Pietrificato":"Trasformato in pietra: incapacitato, resistenza a tutti i danni, immune a veleno e malattie.",
+ "Conc.":"Concentrazione attiva: se subisce danni, TS su Costituzione CD 10 o metà del danno (il più alto) per mantenerla."};
 function trkSave(){lsSet("enc_trk",TRK)}
 /* undo */
 let UNDO=[];
@@ -1415,15 +1446,37 @@ function dmg(id,v){
   const u=TRK.list.find(x=>x.id===id);if(!u||u.hp===null)return;
   snap();
   u.hp=Math.max(0,Math.min(u.hpMax,u.hp+v));
+  if(u.hp>0){u.dsS=0;u.dsF=0}
   if(v<0&&u.cond&&u.cond.includes("Conc."))dlog(`⚠ ${u.name}: TS Concentrazione CD ${Math.max(10,Math.floor(Math.abs(v)/2))}`);
   trkSave();renderTrk();
 }
-function setHp(id,v){const u=TRK.list.find(x=>x.id===id);if(u){snap();u.hp=Math.max(0,parseInt(v,10)||0);trkSave();renderTrk()}}
+function setHp(id,v){const u=TRK.list.find(x=>x.id===id);if(u){snap();u.hp=Math.max(0,parseInt(v,10)||0);if(u.hp>0){u.dsS=0;u.dsF=0}trkSave();renderTrk()}}
 function setInit(id,v){const u=TRK.list.find(x=>x.id===id);if(u){u.init=parseInt(v,10)||0;trkSave()}}
 function toggleCond(id,c){
   const u=TRK.list.find(x=>x.id===id);if(!u)return;
   const i=u.cond.indexOf(c);if(i>=0)u.cond.splice(i,1);else u.cond.push(c);
   trkSave();renderTrk();
+}
+/* rinforzi: ricerca rapida nel bestiario dal tracker */
+function renderRList(){
+  const q=($("rQ").value||"").toLowerCase().trim();
+  if(!q){$("rList").innerHTML="";return}
+  const l=pool().filter(m=>m.n.toLowerCase().includes(q)||m.it.toLowerCase().includes(q)).slice(0,10);
+  $("rList").innerHTML=l.map(m=>{const i=MONSTERS.indexOf(m);
+   return`<div class="enc-row" style="padding:5px 12px">
+    <span class="en" onclick="openSb(${i})">${m.it}</span>
+    <span class="em">GS ${m.cr} · ${m.tp.split(" (")[0]} · ${m.src}</span>
+    <span style="margin-left:auto"><button class="btn small gold" onclick="addToTrk(${i});$('rQ').value='';renderRList()">🗡 Aggiungi</button></span></div>`}).join("")
+   ||'<p style="color:var(--muted);font-size:.85rem">Nessuna creatura trovata.</p>';
+}
+/* TS contro morte dei PG a 0 pf */
+function dsSet(id,f,k){
+  const u=TRK.list.find(x=>x.id===id);if(!u)return;
+  u[f]=(u[f]||0)===k+1?k:k+1;trkSave();renderTrk();
+}
+function dsPips(u){
+  const pip=(f,k,col)=>`<span style="display:inline-block;width:11px;height:11px;border:1px solid ${col};border-radius:50%;cursor:pointer;background:${(u[f]||0)>k?col:"transparent"};margin-right:2px" onclick="dsSet('${u.id}','${f}',${k})"></span>`;
+  return`<span style="white-space:nowrap;font-size:.68rem;color:var(--muted)" title="Tiri salvezza contro morte: successi (verdi) e fallimenti (rossi)">☠ ${[0,1,2].map(k=>pip("dsS",k,"#5a8a5a")).join("")} ${[0,1,2].map(k=>pip("dsF",k,"#b54444")).join("")}</span>`;
 }
 function rmU(id){snap();TRK.list=TRK.list.filter(x=>x.id!==id);trkSave();renderTrk()}
 function clearTrk(){if(!confirm("Svuotare il tracker?"))return;snap();TRK={list:[],turn:-1,round:0,fx:[]};trkSave();renderTrk()}
@@ -1441,8 +1494,8 @@ function renderTrk(){
      <span class="tac">${u.ac?("CA "+u.ac):""}</span>
      <span class="hpbar">${u.hp!==null?`<span class="hpbtn" onclick="dmg('${u.id}',-5)">-5</span><span class="hpbtn" onclick="dmg('${u.id}',-1)">-1</span>
        <input value="${u.hp}" onchange="setHp('${u.id}',this.value)"><span class="hx">/${u.hpMax}</span>
-       <span class="hpbtn" onclick="dmg('${u.id}',1)">+1</span>`:'<span class="hx">—</span>'}</span>
-     <span>${CONDS.map(c=>`<span class="chip tiny ${u.cond.includes(c)?"sel":""}" onclick="toggleCond('${u.id}','${c}')">${c}</span>`).join("")}</span>
+       <span class="hpbtn" onclick="dmg('${u.id}',1)">+1</span>${u.pc&&u.hp===0?" "+dsPips(u):""}`:'<span class="hx">—</span>'}</span>
+     <span>${CONDS.map(c=>`<span class="chip tiny ${u.cond.includes(c)?"sel":""}" title="${COND_DESC[c]||c}" onclick="toggleCond('${u.id}','${c}')">${c}</span>`).join("")}</span>
      <span class="xbtn" onclick="rmU('${u.id}')">✕</span></div>`}).join("")
    :'<p style="color:var(--muted)">Il tracker è vuoto. Genera un incontro e usa «Invia al tracker», oppure aggiungi i PG.</p>';
   if(PV&&!PV.closed)pvRender();
