@@ -170,6 +170,7 @@ table.lst tr.mrow:hover{background:#2c2216}
     <div class="tab active" id="tab-gen" onclick="showTab('gen')">⚔ Incontro</div>
     <div class="tab" id="tab-best" onclick="showTab('best')">🐉 Bestiario</div>
     <div class="tab" id="tab-track" onclick="showTab('track')">🗡 Tracker</div>
+    <div class="tab" id="tab-dun" onclick="showTab('dun')">🏰 Dungeon</div>
   </div>
 
   <!-- ============ GENERATORE ============ -->
@@ -229,6 +230,7 @@ table.lst tr.mrow:hover{background:#2c2216}
         <span class="sep"></span>
         <button class="btn" onclick="saveEnc()">💾 Salva incontro</button>
         <button class="btn" onclick="exportEnc()">⬇ Esporta JSON</button>
+        <button class="btn" onclick="shareEnc()" title="Copia un link che contiene l'incontro: chi lo apre se lo ritrova caricato">🔗 Link</button>
         <span class="sep"></span>
         <button class="btn" onclick="ENC=[];renderEnc()">🗑 Svuota</button>
       </div>
@@ -299,6 +301,22 @@ table.lst tr.mrow:hover{background:#2c2216}
   <span style="font-family:var(--font-display);color:var(--gold-l);font-size:.78rem">DADI</span>
   <span class="chip tiny" onclick="rollD(4)">d4</span><span class="chip tiny" onclick="rollD(6)">d6</span><span class="chip tiny" onclick="rollD(8)">d8</span><span class="chip tiny" onclick="rollD(10)">d10</span><span class="chip tiny" onclick="rollD(12)">d12</span><span class="chip tiny" onclick="rollD(20)">d20</span><span class="chip tiny" onclick="rollD(100)">d100</span>
   <span id="dlog" style="flex:1;text-align:right;font-size:.82rem;min-width:180px;color:var(--ink)"></span>
+</div>
+<!-- ============ DUNGEON ============ -->
+<div id="view-dun" style="display:none">
+  <div class="panel">
+    <h2>🏰 Generatore di dungeon</h2>
+    <div class="hint">Stanze, contenuti e pericoli in stile tabelle del DMG (appendice A). Dalle stanze con mostri puoi generare l'incontro con un click (ambiente: sottosuolo, calibrato sul party).</div>
+    <label class="fld"><span>N° stanze</span><select id="dunN"></select></label>
+    <button class="btn gold" onclick="genDun()">🎲 Genera dungeon</button>
+    <span id="dunBar" style="display:none">
+      <span class="sep"></span>
+      <button class="btn" onclick="genDun()">↻ Rigenera</button>
+      <button class="btn" onclick="printDun()">🖨 Stampa</button>
+      <button class="btn" onclick="dunToDiary()">📖 Salva nel diario</button>
+    </span>
+    <div id="dunOut" style="margin-top:16px"></div>
+  </div>
 </div>
 <!-- modale statblock -->
 <div class="modal" id="sbModal" onclick="if(event.target===this)closeSb()">
@@ -778,6 +796,7 @@ function renderHbList(){
     <span class="em">${m.n} · GS ${m.cr} · ${m.tp}</span>
     <span style="margin-left:auto">
       <button class="btn small" onclick="hbEdit(${k})">✏️ Modifica</button>
+      <button class="btn small" onclick="shareHb(${k})" title="Copia un link condivisibile di questo mostro">🔗</button>
       <button class="btn small" onclick="hbDel(${k})">🗑</button>
     </span></div>`).join("")
   :'<p style="color:var(--muted);margin-bottom:10px">Nessun mostro homebrew. Creane uno!</p>';
@@ -1195,6 +1214,117 @@ function openTreasure(){
    <div style="margin-top:10px"><span class="sbroll" onclick="openTreasure()" style="font-size:.85rem;padding:3px 10px">♻ Ritira tutto</span></div></div>`;
   $("sbBody").innerHTML=h;$("sbModal").style.display="flex";dbarVis();
 }
+/* ================= DUNGEON (tabelle stile DMG app. A) ================= */
+const DUN_T={
+ n1:["Cripta","Tana","Rovine","Tempio Perduto","Prigione","Santuario","Fortezza","Catacombe","Miniera Abbandonata","Laboratorio Sepolto"],
+ n2:["del Re Caduto","della Fiamma Nera","dei Sussurri","dell'Idolo Cieco","del Verme","della Luna Rossa","degli Ossi","del Patto Infranto","delle Catene Spezzate","dell'Alba Sepolta"],
+ forma:["camera quadrata (6×6 m)","camera quadrata (9×9 m)","sala rettangolare (6×12 m)","sala circolare (9 m di diametro)","sala ottagonale","lunga galleria sorretta da colonne","caverna dalle pareti irregolari","sala su due livelli collegati da una gradinata","incrocio a T con nicchie laterali","camera per metà crollata"],
+ cont:[[30,"mostro"],[15,"mostro+tesoro"],[15,"trappola"],[18,"vuota"],[10,"enigma"],[6,"png"],[6,"tesoro"]],
+ trap:["fossa nascosta profonda 3 m (2d6 danni da caduta)","dardi avvelenati dalle pareti (TS Des CD 13, 1d4 + 2d4 veleno)","gas soporifero da un condotto (TS Cos CD 12 o svenuto 1 minuto)","filo d'inciampo collegato a un allarme (i mostri vicini accorrono)","glifo di interdizione sulla soglia (TS Des CD 14, 2d8 tuono)","blocco di soffitto cedevole (TS Des CD 12, 2d10 contundenti)","pavimento ribaltabile verso una vasca sottostante","serratura con ago avvelenato (TS Cos CD 13 o avvelenato 1 ora)"],
+ dress:["ossa sparse e vecchie ragnatele","muffa fosforescente sulle pareti","un altare sbeccato di una divinità dimenticata","una statua a cui sono stati asportati gli occhi","un pozzo profondo: l'acqua riflette qualcosa che non c'è","affreschi sbiaditi che raccontano una battaglia","catene e ganci pendono dal soffitto","una fontana asciutta con incisioni consumate","un cumulo di suppellettili marcite","segni di passaggio recente: impronte e cenere ancora calda"],
+ enig:["una porta sigillata con un indovinello inciso","un meccanismo a leve: la sequenza corretta è dipinta altrove nel dungeon","una statua parlante che chiede un pedaggio (non d'oro)","un ponte crollato su un baratro, aggirabile con ingegno","uno specchio che mostra la stanza… con una differenza importante","una scacchiera sul pavimento: le caselle sbagliate scattano"],
+ png:["un prigioniero incatenato (chi è davvero?)","un avventuriero rivale, ferito e diffidente","un mercante improbabile che giura di essersi «perso»","uno spirito legato al luogo che chiede un favore per lasciar passare","un cultista pentito in fuga dai suoi ex compagni"],
+ usc:["una porta di legno marcio","una porta rinforzata chiusa a chiave","un arco aperto","una scala che scende","una botola nel pavimento","un passaggio segreto (Percezione CD 15)","un cunicolo stretto da percorrere strisciando","una scala che sale"]};
+let DUN=null;
+function wPickD(arr){const tot=arr.reduce((s,x)=>s+x[0],0);let r=Math.random()*tot;for(const x of arr){r-=x[0];if(r<=0)return x[1]}return arr[0][1]}
+function genDun(){
+  const n=parseInt($("dunN").value,10)||6;
+  DUN={name:R(DUN_T.n1)+" "+R(DUN_T.n2),rooms:[]};
+  for(let i=1;i<=n;i++){
+    const tipo=i===n?"boss":wPickD(DUN_T.cont);
+    const r={n:i,forma:R(DUN_T.forma),dress:R(DUN_T.dress),tipo,ex:[]};
+    const ne=(i<n?1:0)+1+Math.floor(Math.random()*2);
+    const up=[...DUN_T.usc];
+    for(let k=0;k<Math.min(3,ne);k++)r.ex.push(up.splice(Math.floor(Math.random()*up.length),1)[0]);
+    if(tipo==="trappola")r.det=R(DUN_T.trap);
+    if(tipo==="enigma")r.det=R(DUN_T.enig);
+    if(tipo==="png")r.det=R(DUN_T.png);
+    DUN.rooms.push(r);
+  }
+  $("dunBar").style.display="";
+  renderDun();
+}
+const dunLabel=t=>({"mostro":"⚔ Mostri","mostro+tesoro":"⚔ Mostri + 💰 tesoro","trappola":"⚠ Trappola","vuota":"◻ Vuota","enigma":"🧩 Enigma / ostacolo","png":"🎭 Incontro speciale","tesoro":"💰 Tesoro custodito","boss":"👑 Sala finale — boss e tesoro accumulato"}[t]||t);
+function dunHTML(){
+  return`<div class="mm"><div class="mname">🏰 ${DUN.name}</div>
+   <div class="mtype">${DUN.rooms.length} stanze · generato con le tabelle del DMG (semplificate)</div><div class="rule"></div>`+
+   DUN.rooms.map(r=>`<div class="tr" style="margin:10px 0"><b><i>Stanza ${r.n}.</i></b> ${r.forma}; ${r.dress}.<br>
+    <b>${dunLabel(r.tipo)}</b>${r.det?" — "+r.det:""}${(r.tipo.indexOf("mostro")===0||r.tipo==="boss")?` <span class="sbroll" onclick="dunEnc(${r.tipo==="boss"?3:1})" title="Genera un incontro adatto (ambiente: sottosuolo)">⚔ genera incontro</span>`:""}${(r.tipo==="tesoro"||r.tipo==="mostro+tesoro"||r.tipo==="boss")?` <span class="sbroll" onclick="dunTreasure()" title="Tira un tesoro per la banda di GS del party">💰 tesoro</span>`:""}<br>
+    <span style="font-size:.82rem;color:#6b5636"><b>Uscite:</b> ${r.ex.join("; ")}</span></div>`).join("")+`</div>`;
+}
+function renderDun(){$("dunOut").innerHTML=DUN?dunHTML():""}
+function dunEnc(diff){
+  $("gEnv").value="sottosuolo";$("gMode").value="b";$("gDiff").value=""+diff;
+  modeUI();genEnc();showTab("gen");
+  toast("⚔ Incontro generato per il dungeon — scheda «Incontro»");
+}
+function dunTreasure(){
+  const lv=Math.max(...partyLevels());
+  const b=lv<=4?0:lv<=10?1:lv<=16?2:3;
+  const hd=hoardTreasure(b);
+  $("sbBody").innerHTML=`<div class="mm"><div class="mname">💰 Tesoro (banda GS ${["0–4","5–10","11–16","17+"][b]})</div><div class="rule"></div>
+   <div class="tr"><b>Monete:</b> ${coinTxt(hd.coins)}</div>
+   ${hd.gems?`<div class="tr"><b>Gemme e oggetti d'arte:</b> ${hd.gems}</div>`:""}
+   <div class="tr"><b>Oggetti magici:</b> ${hd.items.length?hd.items.join(", "):"nessuno"}</div>
+   <div style="margin-top:8px"><span class="sbroll" onclick="dunTreasure()" style="font-size:.85rem;padding:3px 10px">♻ Ritira</span></div></div>`;
+  $("sbModal").style.display="flex";dbarVis();
+}
+function printDun(){
+  if(!DUN)return;
+  $("printArea").innerHTML=dunHTML();
+  document.body.classList.add("printsb");
+  window.print();
+  setTimeout(()=>document.body.classList.remove("printsb"),800);
+}
+function dunToDiary(){
+  if(!DUN)return;
+  let txt=`— 🏰 ${DUN.name} —\n`+DUN.rooms.map(r=>`Stanza ${r.n}: ${r.forma}; ${r.dress}. ${dunLabel(r.tipo).replace(/[⚔💰⚠◻🧩🎭👑] ?/g,"")}${r.det?" — "+r.det:""}. Uscite: ${r.ex.join("; ")}.`).join("\n");
+  const DIA=lsGet("dnd5e_diary",{sessions:[],npcs:[],places:[],hooks:[]});
+  ["sessions","npcs","places","hooks"].forEach(k=>{if(!Array.isArray(DIA[k]))DIA[k]=[]});
+  DIA.places.unshift({id:Date.now().toString(36),name:DUN.name,note:"Dungeon generato — pianta e stanze nel testo della sessione più recente."});
+  if(DIA.sessions.length)DIA.sessions[0].text=(DIA.sessions[0].text?DIA.sessions[0].text+"\n\n":"")+txt;
+  else DIA.sessions.unshift({id:Date.now().toString(36),date:new Date().toISOString().slice(0,10),title:"Sessione 1",text:txt});
+  lsSet("dnd5e_diary",DIA);
+  toast("📖 Dungeon salvato nel Diario di Campagna (luoghi + sessione)");
+}
+/* ================= LINK CONDIVISIBILI ================= */
+const b64e=o=>btoa(unescape(encodeURIComponent(JSON.stringify(o))));
+const b64d=s=>JSON.parse(decodeURIComponent(escape(atob(s))));
+function copyLink(url){
+  if(navigator.clipboard&&navigator.clipboard.writeText)
+    navigator.clipboard.writeText(url).then(()=>toast("🔗 Link copiato negli appunti")).catch(()=>prompt("Copia il link:",url));
+  else prompt("Copia il link:",url);
+}
+function shareEnc(){
+  if(!ENC.length)return;
+  const url=location.href.split("#")[0]+"#enc="+b64e({t:"enc",e:ENC.map(r=>({n:MONSTERS[r.i].n,q:r.q,v:r.v}))});
+  copyLink(url);
+}
+function shareHb(k){
+  const m=hbAll()[k];if(!m)return;
+  copyLink(location.href.split("#")[0]+"#hb="+b64e({t:"hb",m}));
+}
+function checkHash(){
+  const h=location.hash;if(!h)return;
+  try{
+    if(h.indexOf("#enc=")===0){
+      const o=b64d(h.slice(5));
+      if(o&&o.t==="enc"&&Array.isArray(o.e)&&confirm("Questo link contiene un incontro condiviso. Caricarlo?")){
+        ENC=o.e.map(x=>({i:MONSTERS.findIndex(m=>m.n===x.n),q:x.q,v:x.v})).filter(x=>x.i>=0&&x.q>0);
+        showTab("gen");renderEnc();toast("🔗 Incontro caricato dal link");
+      }
+      history.replaceState(null,"",location.pathname+location.search);
+    }else if(h.indexOf("#hb=")===0){
+      const o=b64d(h.slice(4));
+      if(o&&o.t==="hb"&&o.m&&o.m.n&&o.m.hp&&o.m.ac&&o.m.cr&&confirm(`Questo link contiene il mostro homebrew «${o.m.it||o.m.n}». Aggiungerlo al tuo bestiario?`)){
+        const hb=hbAll();o.m.src="HB";
+        let nm=o.m.n,k=2;while(MONSTERS.some(x=>x.n===nm))nm=o.m.n+" ("+(k++)+")";o.m.n=nm;
+        hb.push(o.m);lsSet("enc_hb",hb);withRemap(loadHB);toast("🔗 Mostro homebrew importato dal link");
+      }
+      history.replaceState(null,"",location.pathname+location.search);
+    }
+  }catch(e){}
+}
 /* ================= BACKUP SUITE ================= */
 const SUITE_KEYS=["dnd5e_chars","dnd5e_draft","dnd5e_lang","dnd5e_npcs","enc_src","enc_saved","enc_trk","enc_hb","dnd5e_diary"];
 function backupSuite(){
@@ -1504,7 +1634,7 @@ function renderTrk(){
 /* ================= TABS & INIT ================= */
 function showTab(t){
   TAB=t;
-  ["gen","best","track"].forEach(x=>{
+  ["gen","best","track","dun"].forEach(x=>{
     $("view-"+x).style.display=x===t?"":"none";
     $("tab-"+x).classList.toggle("active",x===t)});
   if(t==="best")renderBest();if(t==="track")renderTrk();
@@ -1530,7 +1660,8 @@ function initSelects(){
   $("pLvl").innerHTML=Array.from({length:20},(_,i)=>`<option${i+1===3?" selected":""}>${i+1}</option>`).join("");
   $("gCount").innerHTML=Array.from({length:20},(_,i)=>`<option${i+1===4?" selected":""}>${i+1}</option>`).join("");
   $("gMaxN").innerHTML=Array.from({length:15},(_,i)=>`<option${i+1===6?" selected":""}>${i+1}</option>`).join("");
-  loadHB();initSelects();renderTh();srcBadge();renderTrk();
+  $("dunN").innerHTML=Array.from({length:11},(_,i)=>`<option${i+4===6?" selected":""}>${i+4}</option>`).join("");
+  loadHB();initSelects();renderTh();srcBadge();renderTrk();checkHash();
 })();
 /* v1.1 — homebrew + incontro manuale */
 </script>
