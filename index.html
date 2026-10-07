@@ -271,7 +271,8 @@ table.lst tr.mrow:hover{background:#2c2216}
       <div class="toolbar" style="margin:0 0 14px">
         <span class="tb-lbl">GESTIONE</span>
         <button class="btn" onclick="addPc()">➕ Aggiungi PG</button>
-        <button class="btn" onclick="$('pcFile').click()">⬆ Importa party</button>
+        <button class="btn gold" onclick="openRoster()" title="Aggiunge i personaggi salvati nel Generatore Schede (stesso browser)">👥 PG salvati</button>
+        <button class="btn" onclick="$('pcFile').click()" title="Importa da file JSON esportato dal Generatore Schede">⬆ Importa party</button>
         <button class="btn" id="lairBtn" onclick="toggleLair()">🏰 Tana</button>
         <button class="btn" onclick="openPV()" title="Finestra da proiettare ai giocatori: iniziativa e condizioni, senza PF e statistiche dei mostri">📺 Vista giocatore</button>
         <span class="sep"></span>
@@ -390,6 +391,14 @@ table.lst tr.mrow:hover{background:#2c2216}
 <input type="file" id="hbFile" accept=".json" style="display:none">
 <input type="file" id="pcFile" accept=".json" multiple style="display:none">
 <input type="file" id="bkFile" accept=".json" style="display:none">
+<!-- modale PG salvati (dal generatore schede) -->
+<div class="modal" id="rosterModal" onclick="if(event.target===this)closeRoster()">
+  <div class="modal-box"><h2>👥 Personaggi salvati</h2>
+   <div class="hint" style="color:var(--muted);font-size:.85rem;margin-bottom:10px">Letti dal Generatore Schede in questo browser, con PF attuali, PF temporanei e condizioni. A fine combattimento potrai riportare sulle schede lo stato aggiornato.</div>
+   <div id="rosterList"></div>
+   <div class="toolbar"><button class="btn gold" onclick="rosterAdd()">➕ Aggiungi al tracker</button><button class="btn" onclick="closeRoster()">Chiudi</button></div>
+  </div>
+</div>
 <!-- modale incontri salvati -->
 <div class="modal" id="encModal" onclick="if(event.target===this)closeEncSaved()">
   <div class="modal-box"><h2>📂 Incontri salvati</h2><div id="encSavedList"></div>
@@ -404,7 +413,32 @@ const R=a=>a[Math.floor(Math.random()*a.length)];
 const D=n=>Math.floor(Math.random()*n)+1;
 function lsGet(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
 function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+/* ================= DATI ESTERNI (file importati, link condivisi, backup) =================
+   Tutto ciò che arriva da fuori viene ripulito prima di entrare nella suite:
+   niente markup, virgolette o entità che possano "uscire" dagli attributi HTML;
+   gli id vengono ridotti a caratteri sicuri. Solo i campi player/dm degli enigmi
+   possono contenere HTML, che passa da un filtro a lista bianca. */
+const PZ_ALLOW=false;
+const PZ_HTML_KEYS=["player","dm"];
+function cleanHtml(html){
+  try{const doc=new DOMParser().parseFromString("<body>"+(html||"")+"</body>","text/html");
+    doc.body.querySelectorAll("script,iframe,object,embed,link,meta,base,form,frame,frameset,noscript,template,style").forEach(n=>n.remove());
+    doc.body.querySelectorAll("*").forEach(el=>[...el.attributes].forEach(a=>{
+      const n=a.name.toLowerCase(),v=(a.value||"").replace(/[\s\u0000-\u001f]/g,"").toLowerCase();
+      const urlAttr=["href","src","xlink:href","action","formaction","background","poster"].includes(n);
+      if(n.startsWith("on")||n==="srcdoc"||(urlAttr&&(v.startsWith("javascript:")||v.startsWith("vbscript:")||(v.startsWith("data:")&&!v.startsWith("data:image/")))))el.removeAttribute(a.name)}));
+    return doc.body.innerHTML}catch(e){return String(html||"").replace(/[<>]/g,"")}}
+function cleanStr(v){return v.replace(/[<>]/g,"").replace(/"/g,"”").replace(/&(?=[#A-Za-z0-9])/g,"＆")}
+function safeParse(txt,allowPzHtml){
+  return JSON.parse(txt,(k,v)=>{
+    if(typeof v!=="string")return v;
+    if(allowPzHtml&&PZ_HTML_KEYS.includes(k))return cleanHtml(v);
+    if(k==="id")return v.replace(/[^\w-]/g,"");
+    return cleanStr(v)})}
+/* valore di una chiave del backup: è JSON (tranne la lingua, che è testo semplice) */
+function safeStoreVal(k,v){try{return JSON.stringify(safeParse(v,k==="dnd5e_puzzles"))}catch(e){return String(v).replace(/[^\w-]/g,"")}}
 /* conserva la posizione di scorrimento durante i re-render */
+const esc=s=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 function ks(){const y=window.scrollY;requestAnimationFrame(()=>window.scrollTo(0,y))}
 
 /* ================= FONTI ================= */
@@ -778,7 +812,12 @@ const MONSTERS=[
 /* ================= HOMEBREW ================= */
 const BASE_COUNT=MONSTERS.length;
 function hbAll(){return lsGet("enc_hb",[])}
-function loadHB(){MONSTERS.splice(BASE_COUNT);hbAll().forEach(m=>MONSTERS.push(m))}
+function loadHB(){MONSTERS.splice(BASE_COUNT);
+  /* voci malformate (es. da versioni precedenti o link incompleti) vengono riparate o scartate,
+     e l'elenco salvato viene riallineato così gli indici di modifica restano coerenti */
+  const raw=hbAll(),ok=raw.map(m=>m&&m.src==="HB"&&m.tp&&m.sz&&Array.isArray(m.ab)&&typeof m.hp==="string"&&typeof m.ac==="string"?m:hbNormalize(m)).filter(Boolean);
+  if(ok.length!==raw.length||ok.some((m,i)=>m!==raw[i]))lsSet("enc_hb",ok);
+  ok.forEach(m=>MONSTERS.push(m))}
 function withRemap(fn){
   const encN=ENC.map(r=>({n:MONSTERS[r.i]?MONSTERS[r.i].n:null,q:r.q}));
   const trkN=TRK.list.map(u=>u.mi>=0&&MONSTERS[u.mi]?MONSTERS[u.mi].n:null);
@@ -851,6 +890,21 @@ function hbRead(){
   if(!m.sen)m.sen="Percezione passiva "+(10+Math.floor((m.ab[4]-10)/2));
   return m;
 }
+/* mostro homebrew arrivato da file o link: completa i campi mancanti, scarta quelli malformati */
+function hbNormalize(m){
+  if(!m||typeof m!=="object"||!m.n||XP[String(m.cr)]===undefined)return null;
+  const str=(v,d)=>typeof v==="string"&&v.trim()?v.trim():(typeof v==="number"?String(v):d);
+  const lines=a=>Array.isArray(a)?a.filter(t=>Array.isArray(t)&&t.length>=2).map(t=>[String(t[0]),String(t[1])]):[];
+  const o={n:String(m.n),it:str(m.it,String(m.n)),src:"HB",cr:String(m.cr),
+    sz:str(m.sz,"Media"),tp:str(m.tp,"mostruosità"),al:str(m.al,"non allineato"),
+    ac:str(m.ac,""),hp:str(m.hp,""),spd:str(m.spd,"9 m"),
+    ab:Array.from({length:6},(_,i)=>{const v=parseInt(Array.isArray(m.ab)?m.ab[i]:NaN,10);return v>0&&v<=30?v:10}),
+    lg:str(m.lg,"—"),env:Array.isArray(m.env)&&m.env.length?m.env.map(String):["qualsiasi"],
+    tr:lines(m.tr),act:lines(m.act),rea:lines(m.rea),leg:lines(m.leg)};
+  if(!/^\d+/.test(o.ac)||!/^\d+/.test(o.hp))return null;
+  o.sen=str(m.sen,"Percezione passiva "+(10+Math.floor((o.ab[4]-10)/2)));
+  ["sv","sk","vul","res","imm","cim"].forEach(k=>{const v=str(m[k],"");if(v)o[k]=v});
+  return o}
 function hbValidate(m){
   if(!m.n)return"Il nome è obbligatorio.";
   if(!/^\d+/.test(m.ac))return"La CA deve iniziare con un numero (es. «15 (cuoio)»).";
@@ -886,9 +940,9 @@ $("hbFile").addEventListener("change",e=>{
   const f=e.target.files[0];if(!f)return;
   const rd=new FileReader();
   rd.onload=()=>{try{
-    let arr=JSON.parse(rd.result);if(!Array.isArray(arr))arr=[arr];
+    let arr=safeParse(rd.result,PZ_ALLOW);if(!Array.isArray(arr))arr=[arr];
     const hb=hbAll();
-    arr.forEach(m=>{if(m&&m.n&&m.hp&&m.ac&&m.cr){m.src="HB";if(!hb.some(x=>x.n===m.n)&&!MONSTERS.some(x=>x.n===m.n&&x.src!=="HB"))hb.push(m)}});
+    arr.map(hbNormalize).forEach(m=>{if(m){if(!hb.some(x=>x.n===m.n)&&!MONSTERS.some(x=>x.n===m.n&&x.src!=="HB"))hb.push(m)}});
     lsSet("enc_hb",hb);withRemap(loadHB);renderHbList();
   }catch(err){alert("File JSON non valido.")}};
   rd.readAsText(f);e.target.value="";
@@ -1290,7 +1344,7 @@ function dunToDiary(){
 }
 /* ================= LINK CONDIVISIBILI ================= */
 const b64e=o=>btoa(unescape(encodeURIComponent(JSON.stringify(o))));
-const b64d=s=>JSON.parse(decodeURIComponent(escape(atob(s))));
+const b64d=s=>safeParse(decodeURIComponent(escape(atob(s))),PZ_ALLOW);
 function copyLink(url){
   if(navigator.clipboard&&navigator.clipboard.writeText)
     navigator.clipboard.writeText(url).then(()=>toast("🔗 Link copiato negli appunti")).catch(()=>prompt("Copia il link:",url));
@@ -1317,7 +1371,8 @@ function checkHash(){
       history.replaceState(null,"",location.pathname+location.search);
     }else if(h.indexOf("#hb=")===0){
       const o=b64d(h.slice(4));
-      if(o&&o.t==="hb"&&o.m&&o.m.n&&o.m.hp&&o.m.ac&&o.m.cr&&confirm(`Questo link contiene il mostro homebrew «${o.m.it||o.m.n}». Aggiungerlo al tuo bestiario?`)){
+      if(o&&o.t==="hb")o.m=hbNormalize(o.m);
+      if(o&&o.t==="hb"&&o.m&&confirm(`Questo link contiene il mostro homebrew «${o.m.it||o.m.n}». Aggiungerlo al tuo bestiario?`)){
         const hb=hbAll();o.m.src="HB";
         let nm=o.m.n,k=2;while(MONSTERS.some(x=>x.n===nm))nm=o.m.n+" ("+(k++)+")";o.m.n=nm;
         hb.push(o.m);lsSet("enc_hb",hb);withRemap(loadHB);toast("🔗 Mostro homebrew importato dal link");
@@ -1327,9 +1382,9 @@ function checkHash(){
   }catch(e){}
 }
 /* ================= BACKUP SUITE ================= */
-const SUITE_KEYS=["dnd5e_chars","dnd5e_draft","dnd5e_lang","dnd5e_npcs","enc_src","enc_saved","enc_trk","enc_hb","dnd5e_diary","dnd5e_puzzles"];
+const SUITE_KEYS=["dnd5e_chars","dnd5e_draft","dnd5e_lang","dnd5e_homebrew","dnd5e_npcs","enc_src","enc_saved","enc_trk","enc_hb","dnd5e_diary","dnd5e_puzzles"];
 function backupSuite(){
-  const data={type:"dnd5e_suite_backup",date:new Date().toISOString(),store:{}};
+  const data={type:"dnd5e_suite_backup",ver:2,date:new Date().toISOString(),store:{}};
   let n=0;SUITE_KEYS.forEach(k=>{try{const v=localStorage.getItem(k);if(v!=null){data.store[k]=v;n++}}catch(e){}});
   if(!n){alert("Nulla da salvare.");return}
   const blob=new Blob([JSON.stringify(data)],{type:"application/json"});
@@ -1340,9 +1395,12 @@ function restoreSuite(file){
   const rd=new FileReader();
   rd.onload=()=>{try{
     const d=JSON.parse(rd.result);
-    if(d.type!=="dnd5e_suite_backup"||!d.store)throw 0;
-    if(!confirm("Ripristinare il backup? I dati attuali di questo browser verranno sovrascritti."))return;
-    for(const k in d.store)localStorage.setItem(k,d.store[k]);
+    if(d.type!=="dnd5e_suite_backup"||!d.store||typeof d.store!=="object")throw 0;
+    const keys=Object.keys(d.store).filter(k=>SUITE_KEYS.includes(k)&&typeof d.store[k]==="string");
+    if(!keys.length)throw 0;
+    if(!confirm("Ripristinare il backup? Tutti i dati della suite in questo browser verranno sostituiti da quelli del file."))return;
+    /* sostituzione completa: le chiavi della suite assenti nel backup vengono rimosse, così non restano dati misti */
+    SUITE_KEYS.forEach(k=>{try{if(keys.includes(k))localStorage.setItem(k,safeStoreVal(k,d.store[k]));else localStorage.removeItem(k)}catch(e){}});
     alert("✅ Backup ripristinato. La pagina verrà ricaricata.");location.reload();
   }catch(err){alert("File di backup non valido.")}};
   rd.readAsText(file);
@@ -1399,8 +1457,9 @@ function areaApply(){
   snap();
   const parts=[];
   hit.forEach(u=>{const d=AREA.half[u.id]?Math.floor(dm/2):dm;
-    u.hp=Math.max(0,u.hp-d);parts.push(`${u.name} -${d}`);
-    if(u.cond&&u.cond.includes("Conc."))dlog(`⚠ ${u.name}: TS Concentrazione CD ${Math.max(10,Math.floor(d/2))}`);});
+    const th=u.thp||0;takeDmg(u,d);parts.push(`${esc(u.name)} -${d}${th?` (${Math.min(th,d)} su PF temp.)`:""}`);
+    if(u.pc&&u.hp>0){u.dsS=0;u.dsF=0}
+    if(u.cond&&u.cond.includes("Conc."))dlog(`⚠ ${esc(u.name)}: TS Concentrazione CD ${Math.max(10,Math.floor(d/2))}`);});
   dlog(`💥 Area (${dm}): ${parts.join(", ")}`);
   AREA={on:false,sel:{},half:{}};$("areaPanel").style.display="none";$("areaBtn").classList.remove("on");
   trkSave();renderTrk();
@@ -1458,17 +1517,24 @@ function endCombat(){
   txt+=`\nSconfitti: ${dead.length?grp(dead):"nessuno"}${xp?` · ${xp.toLocaleString("it-IT")} XP${pcs.length?` (${Math.floor(xp/pcs.length).toLocaleString("it-IT")} a testa per ${pcs.length} PG)`:""}`:""}`;
   if(alive.length)txt+=`\nSopravvissuti/fuggiti: ${grp(alive)}`;
   if(down.length)txt+=`\nPG a terra: ${down.join(", ")}`;
+  const nSync=syncPcsToSheets();if(nSync)dlog(`🔄 Schede aggiornate: ${nSync} PG`);
   if(!confirm("Aggiungere questo riepilogo al Diario di Campagna?\n\n"+txt))return;
   const DIA=lsGet("dnd5e_diary",{sessions:[],npcs:[],places:[],hooks:[]});
   ["sessions","npcs","places","hooks"].forEach(k=>{if(!Array.isArray(DIA[k]))DIA[k]=[]});
   if(DIA.sessions.length)DIA.sessions[0].text=(DIA.sessions[0].text?DIA.sessions[0].text+"\n\n":"")+txt;
   else DIA.sessions.unshift({id:Date.now().toString(36),date:new Date().toISOString().slice(0,10),title:"Sessione 1",text:txt});
   /* registro XP del diario: quota a testa */
+  /* XP divisi solo tra i PG presenti nel tracker: ognuno ha il suo totale nel diario */
   const per=pcs.length?Math.floor(xp/pcs.length):0;
-  if(per>0){
-    if(!DIA.xp||typeof DIA.xp.total!=="number")DIA.xp={total:0,log:[]};
-    DIA.xp.total+=per;
-    DIA.xp.log.unshift({id:Date.now().toString(36),date:new Date().toISOString().slice(0,10),amount:per,note:"Combattimento: "+(dead.length?grp(dead):"—")});
+  if(!DIA.xp||typeof DIA.xp.total!=="number")DIA.xp={total:0,log:[]};
+  if(!DIA.xp.pcs||typeof DIA.xp.pcs!=="object")DIA.xp.pcs={};
+  if(per>0&&DIA.xp.mode!=="milestone"){
+    const ros=lsGet("dnd5e_chars",[]);
+    const who=pcs.map(u=>{const k=u.charId||("n:"+u.name.toLowerCase());
+      const it=u.charId&&ros.find(x=>x.id===u.charId);
+      if(!DIA.xp.pcs[k]){const lv=(it&&it.st&&it.st.lv)||1;DIA.xp.pcs[k]={name:u.name,xp:[0,300,900,2700,6500,14000,23000,34000,48000,64000,85000,100000,120000,140000,165000,195000,225000,265000,305000,355000][Math.min(19,lv-1)]}}
+      DIA.xp.pcs[k].name=u.name;DIA.xp.pcs[k].xp+=per;return k});
+    DIA.xp.log.unshift({id:Date.now().toString(36),date:new Date().toISOString().slice(0,10),amount:per,who,note:"Combattimento: "+(dead.length?grp(dead):"—")});
     DIA.xp.log=DIA.xp.log.slice(0,50);
   }
   lsSet("dnd5e_diary",DIA);
@@ -1508,6 +1574,58 @@ function addPc(){
   TRK.list.push({id:"t"+Date.now(),name,sub:"Personaggio giocante",mi:-1,pc:true,init,ac:null,hpMax:null,hp:null,dex:0,cond:[]});
   sortInit();
 }
+/* ---- PG salvati nel generatore schede (stessa origine) ---- */
+/* condizioni: la scheda usa "Concentrazione", il tracker "Conc."; Maledetto/Benedetto esistono solo sulla scheda */
+const pcCondIn=a=>(Array.isArray(a)?a:[]).map(c=>c==="Concentrazione"?"Conc.":c).filter(c=>CONDS.includes(c));
+const pcCondOut=(trk,old)=>{const mapped=(trk||[]).map(c=>c==="Conc."?"Concentrazione":c);
+  const keep=(Array.isArray(old)?old:[]).filter(c=>c!=="Concentrazione"&&!CONDS.includes(c));return[...mapped,...keep]};
+function charRoster(){return lsGet("dnd5e_chars",[]).filter(it=>it&&it.id&&it.data)}
+function openRoster(){
+  const list=charRoster();
+  $("rosterList").innerHTML=list.length?list.map(it=>{const st=it.st,inT=TRK.list.some(u=>u.charId===it.id);
+    const hp=st?(st.hpC!=null?st.hpC:st.hpM):null;
+    return`<label class="row" style="display:flex;gap:10px;align-items:center;padding:7px 10px;border:1px solid var(--border);border-radius:9px;margin-bottom:6px;cursor:${st?"pointer":"default"};opacity:${st?1:.55}">
+     <input type="checkbox" class="rosterChk" value="${esc(it.id)}" ${st&&!inT?"checked":""} ${st?"":"disabled"}>
+     <span style="flex:1"><b style="color:var(--gold-l)">${esc(it.name)}</b> <span style="color:var(--muted);font-size:.8rem">${esc(it.info||"")}</span>
+      ${inT?'<span style="color:var(--muted);font-size:.75rem"> · già nel tracker (verrà aggiornato)</span>':""}</span>
+     <span style="font-size:.82rem;color:var(--muted)">${st?`CA <b style="color:var(--ink)">${st.ac}</b> · PF <b style="color:var(--ink)">${hp}</b>/${st.hpM}${st.thp?` +${st.thp}T`:""}${(st.cond||[]).length?" · "+esc(st.cond.join(", ")):""}`:"apri una volta il Generatore Schede per aggiornare i dati"}</span>
+    </label>`}).join("")
+   :`<p style="color:var(--muted)">Nessun personaggio salvato nel Generatore Schede di questo browser.</p>`;
+  $("rosterModal").style.display="flex";
+}
+function closeRoster(){$("rosterModal").style.display="none"}
+function rosterAdd(){
+  const ids=[...document.querySelectorAll(".rosterChk:checked")].map(c=>c.value);
+  if(!ids.length){closeRoster();return}
+  snap();
+  charRoster().filter(it=>ids.includes(it.id)&&it.st).forEach(it=>addPcRow({...it.st,name:it.name,charId:it.id,hpC:it.st.hpC!=null?it.st.hpC:it.st.hpM}));
+  trkSave();closeRoster();sortInit();showTab("track");renderTrk();toast(`👥 ${ids.length} PG nel tracker: tira l'iniziativa e inseriscila`);
+}
+/* fine combattimento: riporta sulle schede PF, PF temporanei, condizioni e TS contro morte (con conferma) */
+function syncPcsToSheets(){
+  const rows=TRK.list.filter(u=>u.pc&&u.charId&&u.hp!=null);if(!rows.length)return 0;
+  const list=lsGet("dnd5e_chars",[]);const ch=[];
+  rows.forEach(u=>{const it=list.find(x=>x.id===u.charId);if(!it||!it.data)return;
+    const p=it.data.play||{},st=it.st||{};const oldHp=p.hp!=null?p.hp:st.hpM;
+    const nc=pcCondOut(u.cond,p.cond),oc=Array.isArray(p.cond)?p.cond:[];
+    const d=[];
+    if(oldHp!==u.hp)d.push(`PF ${oldHp??"?"}→${u.hp}`);
+    if((p.thp||0)!==(u.thp||0))d.push(`PF temp. ${p.thp||0}→${u.thp||0}`);
+    if(nc.join()!==oc.join())d.push(`condizioni: ${nc.length?nc.join(", "):"nessuna"}`);
+    if(u.hp===0&&((u.dsS||0)||(u.dsF||0)))d.push(`TS morte ${u.dsS||0}✓ ${u.dsF||0}✗`);
+    if(d.length)ch.push({it,u,nc,txt:`• ${u.name}: ${d.join(" · ")}`})});
+  if(!ch.length)return 0;
+  if(!confirm("Aggiornare le schede dei personaggi con lo stato di fine combattimento?\n\n"+ch.map(c=>c.txt).join("\n")))return 0;
+  const now=Date.now();
+  ch.forEach(({it,u,nc})=>{const p=it.data.play||(it.data.play={hp:null,thp:0,slots:{},pact:0,hd:0,dsS:0,dsF:0,insp:false,res:{}});
+    p.hp=(it.st&&u.hp>=it.st.hpM)?null:u.hp;p.thp=u.thp||0;p.cond=nc;p.dsS=u.hp===0?(u.dsS||0):0;p.dsF=u.hp===0?(u.dsF||0):0;
+    it.syncTs=now;if(it.st){it.st.hpC=p.hp;it.st.thp=p.thp;it.st.cond=nc.slice()}});
+  lsSet("dnd5e_chars",list);
+  /* se lo stesso PG è aperto come bozza nel generatore schede, aggiorna anche quella */
+  const dr=lsGet("dnd5e_draft",null);
+  if(dr&&dr.id){const c=ch.find(x=>x.it.id===dr.id);if(c){dr.play=JSON.parse(JSON.stringify(c.it.data.play));dr._syncTs=now;lsSet("dnd5e_draft",dr)}}
+  return ch.length;
+}
 /* ---- import party dal generatore schede ---- */
 function addPcRow(p){
   const name=p.name||"PG";
@@ -1520,6 +1638,8 @@ function addPcRow(p){
    mi:-1,pc:true,init:ex?ex.init:null,
    ac:parseInt(p.ac,10)||null,hpMax:hpM,hp:hpC,
    dex:parseInt(p.init,10)||0,cond:ex?ex.cond:[]};
+  if(p.charId){row.charId=p.charId;
+    if(!ex){row.thp=parseInt(p.thp,10)||0;row.cond=pcCondIn(p.cond);row.dsS=p.dsS||0;row.dsF=p.dsF||0}}
   if(ex)Object.assign(ex,row);else TRK.list.push(row);
 }
 function importPc(obj){
@@ -1537,7 +1657,7 @@ $("pcFile").addEventListener("change",e=>{
   const files=[...e.target.files];if(!files.length)return;
   let done=0,pending=files.length;
   files.forEach(f=>{const rd=new FileReader();
-    rd.onload=()=>{try{done+=importPc(JSON.parse(rd.result))}catch(err){}
+    rd.onload=()=>{try{done+=importPc(safeParse(rd.result,PZ_ALLOW))}catch(err){}
       if(--pending===0){
         if(done){trkSave();sortInit();showTab("track");renderTrk()}
         else alert("Nessun personaggio riconosciuto nel file. Usa l'export del generatore schede (party o singolo PG).");
@@ -1573,12 +1693,19 @@ function nextTurn(){
 }
 function laSet(id,k){const u=TRK.list.find(x=>x.id===id);if(!u)return;
   u.la=(u.la||0)===k+1?k:k+1;trkSave();renderTrk()}
+/* danno con assorbimento dei PF temporanei: restituisce quanto è andato sui PF reali */
+function takeDmg(u,d){d=Math.max(0,d|0);const t=Math.min(u.thp||0,d);u.thp=(u.thp||0)-t;
+  const rest=d-t;u.hp=Math.max(0,u.hp-rest);return rest}
+function setThp(id,v){const u=TRK.list.find(x=>x.id===id);if(!u)return;snap();
+  /* i PF temporanei non si sommano: si tiene il valore più alto, a meno di sostituzione esplicita */
+  u.thp=Math.max(0,parseInt(v,10)||0);trkSave();renderTrk()}
 function dmg(id,v){
   const u=TRK.list.find(x=>x.id===id);if(!u||u.hp===null)return;
   snap();
-  u.hp=Math.max(0,Math.min(u.hpMax,u.hp+v));
+  if(v<0)takeDmg(u,-v);
+  else u.hp=Math.min(u.hpMax==null?Infinity:u.hpMax,u.hp+v);
   if(u.hp>0){u.dsS=0;u.dsF=0}
-  if(v<0&&u.cond&&u.cond.includes("Conc."))dlog(`⚠ ${u.name}: TS Concentrazione CD ${Math.max(10,Math.floor(Math.abs(v)/2))}`);
+  if(v<0&&u.cond&&u.cond.includes("Conc."))dlog(`⚠ ${esc(u.name)}: TS Concentrazione CD ${Math.max(10,Math.floor(Math.abs(v)/2))}`);
   trkSave();renderTrk();
 }
 function setHp(id,v){const u=TRK.list.find(x=>x.id===id);if(u){snap();u.hp=Math.max(0,parseInt(v,10)||0);if(u.hp>0){u.dsS=0;u.dsF=0}trkSave();renderTrk()}}
@@ -1614,18 +1741,19 @@ function clearTrk(){if(!confirm("Svuotare il tracker?"))return;snap();TRK={list:
 function renderTrk(){
   ks();
   $("roundLbl").textContent=TRK.round>0?`— Round ${TRK.round}`:"";
-  $("fxRows").innerHTML=(TRK.fx||[]).map(f=>`<span class="fx-chip">✨ ${f.name} — <b>${f.rds}</b> round${f.tgt?" · "+f.tgt:""}<span class="fx-x" onclick="rmFx('${f.id}')">✕</span></span>`).join("");
+  $("fxRows").innerHTML=(TRK.fx||[]).map(f=>`<span class="fx-chip">✨ ${esc(f.name)} — <b>${f.rds}</b> round${f.tgt?" · "+esc(f.tgt):""}<span class="fx-x" onclick="rmFx('${f.id}')">✕</span></span>`).join("");
   $("trkRows").innerHTML=TRK.list.length?TRK.list.map((u,i)=>{
     const dead=!u.pc&&u.hp<=0;
     const areaBox=AREA.on&&u.hp!==null?`<span style="white-space:nowrap" onclick="event.stopPropagation()"><input type="checkbox" ${AREA.sel[u.id]?"checked":""} onchange="areaSel('${u.id}')" title="Coinvolto nell'area"> <span class="chip tiny ${AREA.half[u.id]?"sel":""}" onclick="areaHalf('${u.id}')" title="TS superato: metà danni">½</span></span> `:"";
     const laPips=(!u.pc&&u.mi>=0&&MONSTERS[u.mi]&&MONSTERS[u.mi].leg)?`<span style="white-space:nowrap;font-size:.68rem;color:var(--gold)" title="Azioni leggendarie usate nel round" onclick="event.stopPropagation()">AL ${[0,1,2].map(k=>`<span style="display:inline-block;width:11px;height:11px;border:1px solid var(--gold);border-radius:50%;cursor:pointer;background:${(u.la||0)>k?"var(--gold)":"transparent"}" onclick="laSet('${u.id}',${k})"></span>`).join("")}</span>`:"";
     return`<div class="trk-row ${i===TRK.turn?"active":""} ${dead?"dead":""}">
      <input class="ti" value="${u.init??""}" placeholder="—" onchange="setInit('${u.id}',this.value)">
-     <span class="tn" ${u.mi>=0?`onclick="openSb(${u.mi})"`:""}>${areaBox}${dead?"☠ ":""}${u.name} ${laPips}<small>${u.sub}</small></span>
+     <span class="tn" ${u.mi>=0?`onclick="openSb(${u.mi})"`:""}>${areaBox}${dead?"☠ ":""}${esc(u.name)} ${laPips}<small>${esc(u.sub)}</small></span>
      <span class="tac">${u.ac?("CA "+u.ac):""}</span>
      <span class="hpbar">${u.hp!==null?`<span class="hpbtn" onclick="dmg('${u.id}',-5)">-5</span><span class="hpbtn" onclick="dmg('${u.id}',-1)">-1</span>
        <input value="${u.hp}" onchange="setHp('${u.id}',this.value)"><span class="hx">/${u.hpMax}</span>
-       <span class="hpbtn" onclick="dmg('${u.id}',1)">+1</span>${u.pc&&u.hp===0?" "+dsPips(u):""}`:'<span class="hx">—</span>'}</span>
+       <span class="hpbtn" onclick="dmg('${u.id}',1)">+1</span>
+       <input class="thp" value="${u.thp||""}" placeholder="+T" title="PF temporanei (assorbono i danni per primi)" onchange="setThp('${u.id}',this.value)" style="width:38px;${u.thp?"color:#7ec4e0;border-color:#3f7f99":""}">${u.pc&&u.hp===0?" "+dsPips(u):""}`:'<span class="hx">—</span>'}</span>
      <span>${CONDS.map(c=>`<span class="chip tiny ${u.cond.includes(c)?"sel":""}" title="${COND_DESC[c]||c}" onclick="toggleCond('${u.id}','${c}')">${c}</span>`).join("")}</span>
      <span class="xbtn" onclick="rmU('${u.id}')">✕</span></div>`}).join("")
    :'<p style="color:var(--muted)">Il tracker è vuoto. Genera un incontro e usa «Invia al tracker», oppure aggiungi i PG.</p>';
